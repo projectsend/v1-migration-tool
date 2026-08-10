@@ -17,8 +17,20 @@
 #   scripts/sim.sh shell              a shell in the app container
 #   scripts/sim.sh down               stop and destroy everything
 #
-# `up` destroys whatever was there. Nothing in sim-migrate/ should ever
-# be edited by hand — re-run instead.
+# `up` destroys whatever was there. Nothing in the instance directory
+# should ever be edited by hand — re-run instead.
+#
+# More than one instance can exist at a time; each needs its own name and
+# its own ports:
+#
+#   SIM_NAME=v1-migration-test SIM_APP_PORT=8193 SIM_DB_PORT=33164 \
+#   SIM_PROVISION_ADMIN=0 scripts/sim.sh up
+#
+# SIM_PROVISION_ADMIN=0 leaves ADMIN_EMAIL/ADMIN_PASSWORD out of .env, so
+# the instance boots with no accounts at all and shows ProjectSend's real
+# first-run setup screen instead of being handed an administrator. That
+# is the honest starting point for a migration: an install someone has
+# just set up and not yet used.
 #
 # ## Why fixtures are staged with `cp -al`
 #
@@ -37,10 +49,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$(cd "$PACKAGE_DIR/../.." && pwd)"
 
-SIM_DIR="$ROOT/sim-migrate"
-PROJECT="projectsend-sim-migrate"
+NAME="${SIM_NAME:-sim-migrate}"
+SIM_DIR="$ROOT/$NAME"
+PROJECT="projectsend-$NAME"
 APP_PORT="${SIM_APP_PORT:-8192}"
 DB_PORT_FORWARD="${SIM_DB_PORT:-33163}"
+
+# 1 hands the instance an administrator so it can be scripted; 0 leaves
+# the setup screen to be completed by hand.
+PROVISION_ADMIN="${SIM_PROVISION_ADMIN:-1}"
 
 # Where the seeded v1 installs live (see the host's ps-seed notes).
 FIXTURE_ROOT="${V1_FIXTURE_ROOT:-$(cd "$ROOT/.." && pwd)}"
@@ -99,12 +116,19 @@ cmd_up() {
 
     say "Writing .env"
     cp "$SIM_DIR/.env.example" "$SIM_DIR/.env"
-    sed -i \
-        -e "s#^APP_URL=.*#APP_URL=http://localhost:$APP_PORT#" \
-        -e "s/^# ADMIN_NAME=.*/ADMIN_NAME=\"Sim Administrator\"/" \
-        -e "s/^# ADMIN_EMAIL=.*/ADMIN_EMAIL=$ADMIN_EMAIL/" \
-        -e "s/^# ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$ADMIN_PASSWORD/" \
-        "$SIM_DIR/.env"
+    sed -i -e "s#^APP_URL=.*#APP_URL=http://localhost:$APP_PORT#" "$SIM_DIR/.env"
+
+    if [[ "$PROVISION_ADMIN" == "1" ]]; then
+        # docker/app/entrypoint.sh runs `projectsend:admin --if-none`
+        # only when both of these are set; without them it leaves the
+        # setup screen to prompt, which is what SIM_PROVISION_ADMIN=0 is
+        # for.
+        sed -i \
+            -e "s/^# ADMIN_NAME=.*/ADMIN_NAME=\"Sim Administrator\"/" \
+            -e "s/^# ADMIN_EMAIL=.*/ADMIN_EMAIL=$ADMIN_EMAIL/" \
+            -e "s/^# ADMIN_PASSWORD=.*/ADMIN_PASSWORD=$ADMIN_PASSWORD/" \
+            "$SIM_DIR/.env"
+    fi
     {
         echo ""
         echo "APP_PORT=$APP_PORT"
@@ -144,10 +168,17 @@ cmd_up() {
     dc up -d
 
     say "Ready"
-    echo "    http://localhost:$APP_PORT/system/migrate"
-    echo "    $ADMIN_EMAIL / $ADMIN_PASSWORD"
+
+    if [[ "$PROVISION_ADMIN" == "1" ]]; then
+        echo "    http://localhost:$APP_PORT/system/migrate"
+        echo "    $ADMIN_EMAIL / $ADMIN_PASSWORD"
+    else
+        echo "    http://localhost:$APP_PORT"
+        echo "    No accounts yet — it will show the setup screen."
+    fi
+
     echo
-    echo "    Next: scripts/sim.sh fixture small"
+    echo "    Next: SIM_NAME=$NAME scripts/sim.sh fixture small"
 }
 
 cmd_fixture() {
@@ -211,7 +242,7 @@ cmd_fixture() {
     echo "    In the screen at http://localhost:$APP_PORT/system/migrate, choose"
     echo "    \"On this machine\" and enter:  /var/www/html/v1/$db_name"
     echo
-    echo "    Or from the command line:      scripts/sim.sh run $name"
+    echo "    Or from the command line:      SIM_NAME=$NAME scripts/sim.sh run $name"
 }
 
 cmd_run() {
