@@ -109,7 +109,28 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Unit/HostTablesTest.php` | Delete order covers what is written, children first |
 | `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
 
-Beyond the suite, every release should be run against the three seeded v1 fixtures (`ps-small`, `ps-messy`, `ps-large`) and reconciled with `projectsend:migrate:verify`.
+### Running it for real
+
+`scripts/sim.sh` stands up a disposable v2 to migrate into, because a development checkout can never be one: the tool imports into a fresh install only, and a checkout has content and shares its storage with everything else.
+
+```
+scripts/sim.sh up              # a v2 of its own, on :8192, with this package installed
+scripts/sim.sh fixture large   # stage a v1 install into it
+scripts/sim.sh run large --files=hardlink
+scripts/sim.sh reset
+```
+
+Fixtures are staged **inside** the instance with `cp -al`. Both halves matter: a hardlink cannot cross a mount point and the container sees each bind mount separately even on one filesystem, so a v1 install mounted from outside could never demonstrate `--files=hardlink`; and `cp -al` makes the staging itself free, so the 5 GB fixture stages in about four seconds.
+
+Measured on that instance, end to end through nginx, php-fpm and a queue worker — `ps-large`, 340 accounts, 5,000 files, 99,473 downloads, 148,738 activity rows, imported with `--files=hardlink`:
+
+| | |
+|---|---|
+| preflight + import + verify | **44 seconds** |
+| disk used before vs after | **unchanged** |
+| every imported file | `nlink = 3` — the fixture, the staged copy and v2 share one set of blocks |
+
+Every release should be run against all three fixtures and reconciled with `projectsend:migrate:verify`.
 
 ## Deliberately not built
 

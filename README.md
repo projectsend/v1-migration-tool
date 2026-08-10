@@ -85,6 +85,20 @@ composer install
 vendor/bin/pest
 ```
 
+To exercise it against a real ProjectSend, `scripts/sim.sh` builds a disposable v2 with
+this package installed and stages the seeded v1 fixtures into it:
+
+```bash
+scripts/sim.sh up               # a v2 of its own on :8192
+scripts/sim.sh fixture small    # stage a v1 install
+scripts/sim.sh run small        # preflight, import, verify
+scripts/sim.sh reset            # undo it and try again
+```
+
+A development checkout cannot stand in for that instance: the tool imports into a
+fresh install only, and a checkout has content and shares its file storage with
+everything else you have been doing.
+
 Tests run against a throwaway Testbench app with no host present, so the host tables are
 replicated in `tests/Support/HostSchema.php`. That replica is a convenience, not the
 contract — the contract is `src/Host/HostTables.php`, and it is verified against the real

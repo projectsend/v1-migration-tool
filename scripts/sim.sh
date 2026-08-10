@@ -197,6 +197,16 @@ cmd_fixture() {
             mysql -uroot -p'$DB_ROOT_PASSWORD' $db_name 2>/dev/null
         "
 
+    # Files created inside the bind mount after the containers started
+    # are not reliably visible to them — a known artifact of this setup,
+    # and it shows up here as the tool reading the *pre-staging* config
+    # and trying to reach `localhost`. Restarting is the fix; `web` is
+    # included because nginx caches php-fpm's address and answers 502 for
+    # the rest of its life otherwise.
+    say "Restarting the containers so they see the staged install"
+    dc restart app worker scheduler web >/dev/null
+    sleep 6
+
     say "Staged"
     echo "    In the screen at http://localhost:$APP_PORT/system/migrate, choose"
     echo "    \"On this machine\" and enter:  /var/www/html/v1/$db_name"
