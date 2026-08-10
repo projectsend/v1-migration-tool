@@ -70,7 +70,11 @@ History is last because it is an order of magnitude larger than everything else,
 
 **Who is a client is decided by role *name*.** v1 still carries a `level` column that `Users::create()` stopped writing years ago — on a real install every account but the installer's own admin has `level = 0`, so a tool keying off it classifies the whole staff as clients. v1 asks `Roles::isClientRole()`, which is `$name === 'Client'`. So does this.
 
-**Categories are a tree in v1 and flat in v2.** A leaf keeps its own name when it is free; when it is not — installs routinely have "2024 › Invoices" and "2025 › Invoices" — the ancestor path is prefixed so both survive.
+**Categories are a tree in v1 and flat in v2.** Every category that had a parent takes its whole ancestry as its name — `Clients / Acme / Invoices` — and a root category keeps its bare name. Nothing merges and nothing is dropped, so no file loses a tag.
+
+The first implementation kept the leaf name and qualified it only on collision. That produces shorter names and was wrong: with three `Invoices` in different branches, *which* one got to keep the bare name was decided by v1's row order, so an administrator saw `Invoices`, `Globex / Invoices` and `Archive / Invoices` side by side with nothing explaining why one was special. Qualifying all of them costs verbosity and buys an install where every category name means the same kind of thing. Two guards on top: `categories.name` is a `varchar(255)`, so an over-long path drops leading ancestors (`… / Globex / Invoices`) rather than overflowing — the deepest part is the specific one; and two siblings sharing a name make two identical paths, which get a ` (2)` suffix rather than one of them losing its files.
+
+Worth knowing when reading the fixtures: the seeder gave every category a globally unique name (`Pending 8`, `Web Ready 15`), so none of them exercise a name collision. That is a fixture artifact, not what real installs look like — `tests/Feature/CategoriesPhaseTest.php` is where the collision, depth, cycle and dangling-parent cases actually live.
 
 **Slugs cannot go through the host.** `HasUniqueSlug::uniqueSlugFrom()` runs a query per candidate. On 200,000 files mostly called "Final", that is the entire import. `Transform\SlugReserver` follows the same rules in memory.
 
@@ -103,6 +107,7 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Unit/ActionMapTest.php` | What maps, what is dropped, and why per-assignment visibility is not `file.made_public` |
 | `tests/Unit/OptionMapTest.php` | Types, units, inversions, junk rows tolerated |
 | `tests/Unit/HostTablesTest.php` | Delete order covers what is written, children first |
+| `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
 
 Beyond the suite, every release should be run against the three seeded v1 fixtures (`ps-small`, `ps-messy`, `ps-large`) and reconciled with `projectsend:migrate:verify`.
 

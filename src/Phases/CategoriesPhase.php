@@ -12,26 +12,51 @@ use ProjectSend\V1Migration\Source\V1Tables;
 use ProjectSend\V1Migration\Transform\LegacyText;
 
 /**
- * Categories, flattened.
+ * Categories, flattened onto their full path.
  *
  * v1's categories are a tree; v2's are deliberately flat — its migration
  * says so out loud ("Flat, cross-cutting labels for files (folders
- * provide hierarchy)"), and there is no parent_id to import into.
+ * provide hierarchy)"), and there is no parent_id to import into. So the
+ * hierarchy has to collapse, and the only real question is what the
+ * names become.
  *
- * So the hierarchy has to collapse, and the question is only how loudly.
- * A leaf keeps its own name when that name is still free. When it is
- * not — v1 installs routinely have "2024 › Invoices" and "2025 ›
- * Invoices" — the parent path is prefixed, so both survive and stay
- * distinguishable instead of one of them silently winning a unique
- * constraint. Every renamed category is counted in the report.
+ * **A category that had a parent takes its whole ancestry as its name:**
+ * `Clients / Acme / Invoices`. A root category keeps its bare name.
  *
- * The whole table is read into memory first. It has to be: a child can
- * appear before its parent, and the name a child ends up with depends on
- * its ancestors. Categories are made by hand, so this is hundreds of
- * rows, not millions.
+ * The alternative — keep the leaf name and qualify it only when it
+ * collides — produces shorter names and was what this did first. It was
+ * dropped because *which* of three `Invoices` categories got to keep the
+ * bare name was decided by v1's row order: an administrator would see
+ * `Invoices`, `Globex / Invoices` and `Archive / Invoices` side by side
+ * with nothing explaining why one is special. Qualifying all of them
+ * costs some verbosity and buys an install where every category name
+ * means the same kind of thing, and where the tree that used to exist is
+ * still readable. Renaming afterwards is one screen.
+ *
+ * Nothing merges and nothing is dropped: every v1 category becomes
+ * exactly one v2 category, so no file loses a tag.
+ *
+ * The whole table is read into memory first. It has to be — a child can
+ * appear before its parent, and a name depends on every ancestor.
+ * Categories are made by hand, so this is hundreds of rows, not
+ * millions.
  */
 final class CategoriesPhase implements Phase
 {
+    private const SEPARATOR = ' / ';
+
+    /**
+     * v2's categories.name is a varchar(255). A deep tree of long names
+     * can exceed that, and a database error three phases into an import
+     * is a poor way to find out.
+     */
+    private const MAX_NAME = 255;
+
+    /**
+     * Stands in for the ancestors dropped to fit MAX_NAME.
+     */
+    private const ELLIPSIS = '…';
+
     public function key(): string
     {
         return 'categories';
@@ -59,17 +84,27 @@ final class CategoriesPhase implements Phase
             return null;
         }
 
-        $taken = DB::table(HostTables::CATEGORIES)
-            ->pluck('name')
-            ->map(static fn ($name): string => (string) $name)
-            ->all();
-        $taken = array_flip($taken);
+        /** @var array<string, true> $taken */
+        $taken = array_fill_keys(
+            DB::table(HostTables::CATEGORIES)->pluck('name')->map(strval(...))->all(),
+            true,
+        );
 
         $now = now();
+        $nested = 0;
+        $shortened = 0;
+        $duplicates = 0;
+        $orphaned = 0;
 
         foreach ($categories as $sourceId => $category) {
-            $renamed = false;
-            $name = $this->uniqueName($categories, $sourceId, $taken, $renamed);
+            $wasShortened = false;
+            $parts = $this->ancestry($categories, $sourceId, $orphaned);
+            $path = $this->fit($parts, $wasShortened);
+            $name = $this->unique($path, $taken, $duplicates);
+
+            if ($wasShortened) {
+                $shortened++;
+            }
 
             $id = (int) DB::table(HostTables::CATEGORIES)->insertGetId([
                 'name' => $name,
@@ -83,17 +118,28 @@ final class CategoriesPhase implements Phase
             $context->idMap->record(MigrationIdMap::ENTITY_CATEGORY, $sourceId, $id);
             $context->count($this->key(), 'imported');
 
-            if ($renamed) {
-                $context->count($this->key(), 'renamed_to_keep_apart');
+            if (count($parts) > 1) {
+                $nested++;
             }
         }
 
         $context->idMap->flush();
 
-        $depth = $this->deepestNesting($categories);
+        if ($nested > 0) {
+            $context->count($this->key(), 'renamed_to_their_full_path', $nested);
+            $context->set($this->key(), 'v1_tree_depth', $this->deepestNesting($categories));
+        }
 
-        if ($depth > 1) {
-            $context->set($this->key(), 'v1_tree_depth_flattened', $depth);
+        if ($shortened > 0) {
+            $context->count($this->key(), 'name_too_long_ancestors_dropped', $shortened);
+        }
+
+        if ($duplicates > 0) {
+            $context->count($this->key(), 'identical_paths_suffixed', $duplicates);
+        }
+
+        if ($orphaned > 0) {
+            $context->skipped($this->key(), 'parent category missing; imported without its ancestry');
         }
 
         return 1;
@@ -114,7 +160,7 @@ final class CategoriesPhase implements Phase
 
                 $categories[$afterId] = [
                     'name' => LegacyText::line((string) ($row['name'] ?? '')) ?: 'Category '.$afterId,
-                    'parent' => $parent > 0 ? $parent : null,
+                    'parent' => $parent !== null && $parent > 0 ? $parent : null,
                     'timestamp' => $row['timestamp'] ?? null,
                 ];
             }
@@ -124,47 +170,100 @@ final class CategoriesPhase implements Phase
     }
 
     /**
-     * The leaf name, or the ancestor path when the leaf name is taken.
+     * Root-first list of names, from the outermost ancestor down to this
+     * category.
+     *
+     * `tbl_categories.parent` is a self-reference with no constraint
+     * against cycles and no foreign key, so both a loop and a parent id
+     * pointing at nothing are possible in a real install. A loop stops at
+     * the first repeat; a dangling parent stops the walk and is counted,
+     * which leaves the category with a shorter path rather than failing
+     * the run.
      *
      * @param  array<int, array{name: string, parent: int|null, timestamp: mixed}>  $categories
-     * @param  array<string, mixed>  $taken
+     * @return list<string>
      */
-    private function uniqueName(array $categories, int $id, array $taken, bool &$renamed): string
+    private function ancestry(array $categories, int $id, int &$orphaned): array
     {
-        $renamed = false;
-        $name = $categories[$id]['name'];
+        $parts = [];
+        $seen = [];
+        $current = $id;
 
+        while ($current !== null && ! isset($seen[$current])) {
+            if (! isset($categories[$current])) {
+                $orphaned++;
+
+                break;
+            }
+
+            $seen[$current] = true;
+            array_unshift($parts, $categories[$current]['name']);
+            $current = $categories[$current]['parent'];
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The path as a name, short enough for the column.
+     *
+     * Ancestors are dropped from the front rather than the name being
+     * truncated at the end: the deepest part is the specific one, and the
+     * one an administrator will recognise in a filter.
+     *
+     * @param  list<string>  $parts
+     */
+    private function fit(array $parts, bool &$shortened): string
+    {
+        $shortened = false;
+        $name = implode(self::SEPARATOR, $parts);
+
+        if (mb_strlen($name) <= self::MAX_NAME) {
+            return $name;
+        }
+
+        $shortened = true;
+
+        while (count($parts) > 1) {
+            array_shift($parts);
+            $name = self::ELLIPSIS.self::SEPARATOR.implode(self::SEPARATOR, $parts);
+
+            if (mb_strlen($name) <= self::MAX_NAME) {
+                return $name;
+            }
+        }
+
+        return mb_substr($parts[0] ?? 'Category', 0, self::MAX_NAME);
+    }
+
+    /**
+     * v2's categories.name is unique and v1's is not — two siblings can
+     * share a name, which makes two identical paths. A suffix keeps both
+     * rather than failing the chunk, so no file loses its tag.
+     *
+     * @param  array<string, true>  $taken
+     */
+    private function unique(string $name, array $taken, int &$duplicates): string
+    {
         if (! isset($taken[$name])) {
             return $name;
         }
 
-        $renamed = true;
-        $parts = [$name];
-        $parent = $categories[$id]['parent'];
-        $guard = 0;
+        $duplicates++;
+        $suffix = 2;
 
-        // A self-referencing table with no constraint against cycles;
-        // ten levels is far past any real category tree and stops a
-        // corrupt one from hanging the import.
-        while ($parent !== null && isset($categories[$parent]) && $guard++ < 10) {
-            array_unshift($parts, $categories[$parent]['name']);
-            $candidate = implode(' / ', $parts);
+        while (true) {
+            $marker = ' ('.$suffix.')';
+            $candidate = mb_strlen($name) + mb_strlen($marker) > self::MAX_NAME
+                ? mb_substr($name, 0, self::MAX_NAME - mb_strlen($marker)).$marker
+                : $name.$marker;
 
             if (! isset($taken[$candidate])) {
                 return $candidate;
             }
 
-            $parent = $categories[$parent]['parent'];
-        }
-
-        $candidate = implode(' / ', $parts);
-        $suffix = 2;
-
-        while (isset($taken[$candidate.' ('.$suffix.')'])) {
             $suffix++;
         }
-
-        return $candidate.' ('.$suffix.')';
     }
 
     /**
@@ -173,18 +272,12 @@ final class CategoriesPhase implements Phase
     private function deepestNesting(array $categories): int
     {
         $deepest = 1;
+        $orphaned = 0;
 
         foreach (array_keys($categories) as $id) {
-            $depth = 1;
-            $parent = $categories[$id]['parent'];
-
-            while ($parent !== null && isset($categories[$parent]) && $depth < 10) {
-                $depth++;
-                $parent = $categories[$parent]['parent'];
-            }
-
-            $deepest = max($deepest, $depth);
+            $deepest = max($deepest, count($this->ancestry($categories, $id, $orphaned)));
         }
+
 
         return $deepest;
     }
