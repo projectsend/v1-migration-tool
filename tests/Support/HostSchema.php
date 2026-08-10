@@ -145,7 +145,7 @@ final class HostSchema
         });
 
         // 2026_07_27_090000_create_files_tables.php + folder_id, public,
-        // slug, disk, expires_at, commentable, versioning.
+        // slug, disk, expires_at, commentable, versioning, download limits.
         Schema::create('files', function (Blueprint $table): void {
             $table->id();
             $table->unsignedBigInteger('uploaded_by')->nullable();
@@ -158,6 +158,8 @@ final class HostSchema
             $table->boolean('commentable')->default(false);
             $table->string('slug')->unique();
             $table->timestamp('expires_at')->nullable();
+            $table->unsignedInteger('download_limit')->nullable();
+            $table->string('download_limit_scope', 16)->default('total');
             $table->string('original_name');
             $table->string('path');
             $table->string('disk')->default('files');

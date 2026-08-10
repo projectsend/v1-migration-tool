@@ -47,9 +47,43 @@ use ProjectSend\V1Migration\Transform\SlugReserver;
  * `expires` flag is the only thing that says whether that date means
  * anything, and v2 expresses "never" as NULL — reading the date without
  * checking the flag would give every file in the install an expiry.
+ *
+ * ### Download limits
+ *
+ * The same shape, and carried since v2 gained per-file limits: v1's
+ * `download_limit_enabled` + `download_limit_count` collapse into one
+ * nullable `download_limit`, and `download_limit_type` maps across
+ * unchanged because both installs spell the two scopes `total` and
+ * `per_user`.
+ *
+ * Nothing carries the *spent* count, because nothing needs to. v1 keeps
+ * downloads in `tbl_downloads`, DownloadsPhase imports them into v2's
+ * activity log, and that log is where v2 counts a limit from — so an
+ * imported file arrives with its v1 history already spent against its
+ * v1 limit, per downloader and all. The exception is `--history=none`,
+ * which imports no downloads: limited files then arrive with a full
+ * allowance, which is the same trade that option already makes
+ * everywhere else.
+ *
+ * A limit enabled with a count of zero is dropped rather than carried.
+ * v1's column defaults to `0`, so the pair reads as a limit that was
+ * switched on and never given a number; writing it through would make a
+ * file nobody can ever download, which is not what the operator asked
+ * for and would be very hard to explain afterwards.
  */
 final class FilesPhase extends TablePhase
 {
+    /**
+     * Both installations spell the two scopes the same way, and these
+     * are string literals for the same reason HostTables' morph classes
+     * are: the package cannot reference the host's DownloadLimitScope
+     * enum at build time, and HostSchemaCheck is what keeps the contract
+     * honest.
+     */
+    private const LIMIT_TOTAL = 'total';
+
+    private const LIMIT_PER_USER = 'per_user';
+
     private ?SlugReserver $slugs = null;
 
     private ?FileTransfer $transfer = null;
@@ -129,6 +163,7 @@ final class FilesPhase extends TablePhase
             }
 
             $title = LegacyText::line((string) ($row['filename'] ?? '')) ?: (string) $row['url'];
+            $limit = $this->downloadLimit($row, $context);
 
             $id = (int) DB::table(HostTables::FILES)->insertGetId([
                 'uploaded_by' => $context->idMap->lookup(MigrationIdMap::ENTITY_USER, $this->intOrNull($row['user_id'] ?? null)),
@@ -144,17 +179,55 @@ final class FilesPhase extends TablePhase
                 'checksum' => $result['checksum'],
                 'public' => (int) ($row['public_allow'] ?? 0) === 1,
                 'expires_at' => (int) ($row['expires'] ?? 0) === 1 ? $context->clock->toUtc($row['expiry_date'] ?? null) : null,
+                'download_limit' => $limit['limit'],
+                'download_limit_scope' => $limit['scope'],
                 'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 
             $context->idMap->record(MigrationIdMap::ENTITY_FILE, $sourceId, $id);
             $context->count($this->key(), 'imported');
-
-            if ((int) ($row['download_limit_enabled'] ?? 0) === 1) {
-                $context->count($this->key(), 'download_limits_not_carried');
-            }
         }
+    }
+
+    /**
+     * v1's three download-limit columns as v2's two.
+     *
+     * The scope column is `varchar(20)` with no constraint behind it, so
+     * an install that has been through a decade of upgrades can hold
+     * something v2's enum does not accept. Anything unrecognised becomes
+     * `total`, the same fallback v1's own enforcement used, rather than
+     * failing a run of 200,000 rows over one bad string.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array{limit: int|null, scope: string}
+     */
+    private function downloadLimit(array $row, MigrationContext $context): array
+    {
+        $unlimited = ['limit' => null, 'scope' => self::LIMIT_TOTAL];
+
+        if ((int) ($row['download_limit_enabled'] ?? 0) !== 1) {
+            return $unlimited;
+        }
+
+        $count = (int) ($row['download_limit_count'] ?? 0);
+
+        if ($count < 1) {
+            $context->count($this->key(), 'download_limits_enabled_without_a_count');
+
+            return $unlimited;
+        }
+
+        $scope = (string) ($row['download_limit_type'] ?? self::LIMIT_TOTAL);
+
+        if (! in_array($scope, [self::LIMIT_TOTAL, self::LIMIT_PER_USER], true)) {
+            $context->count($this->key(), 'download_limits_with_an_unknown_scope');
+            $scope = self::LIMIT_TOTAL;
+        }
+
+        $context->count($this->key(), 'download_limits_carried');
+
+        return ['limit' => $count, 'scope' => $scope];
     }
 
     private function intOrNull(mixed $value): ?int
