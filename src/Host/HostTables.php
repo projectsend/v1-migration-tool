@@ -123,7 +123,8 @@ final class HostTables
             self::FILES => [
                 'id', 'uploaded_by', 'folder_id', 'name', 'description',
                 'original_name', 'path', 'disk', 'mime_type', 'size', 'checksum',
-                'public', 'slug', 'expires_at', 'created_at', 'updated_at',
+                'public', 'slug', 'expires_at', 'download_limit', 'download_limit_scope',
+                'created_at', 'updated_at',
             ],
             self::FILE_ASSIGNMENTS => [
                 'file_id', 'assignable_type', 'assignable_id',

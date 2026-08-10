@@ -166,7 +166,6 @@ final class SourcePreflight
         $findings = [];
         $encrypted = [];
         $external = [];
-        $limited = 0;
         $missing = [];
         $afterId = 0;
         $dated = $source->manifest()->uploadsOrganizedByDate;
@@ -185,10 +184,6 @@ final class SourcePreflight
                     $external[] = $afterId;
 
                     continue;
-                }
-
-                if ((int) ($row['download_limit_enabled'] ?? 0) === 1) {
-                    $limited++;
                 }
 
                 if ($source->manifest()->filesIncluded
@@ -217,17 +212,6 @@ final class SourcePreflight
                     count($external),
                 ),
                 ['count' => count($external), 'sample' => array_slice($external, 0, self::SAMPLE_LIMIT)],
-            );
-        }
-
-        if ($limited > 0) {
-            $findings[] = Finding::acknowledge(
-                'source.download_limits',
-                sprintf(
-                    '%d file(s) have a download limit. v2 caps downloads on share links, not on files, so the files import and the limits do not.',
-                    $limited,
-                ),
-                ['count' => $limited],
             );
         }
 

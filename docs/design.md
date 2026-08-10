@@ -76,6 +76,10 @@ The first implementation kept the leaf name and qualified it only on collision. 
 
 Worth knowing when reading the fixtures: the seeder gave every category a globally unique name (`Pending 8`, `Web Ready 15`), so none of them exercise a name collision. That is a fixture artifact, not what real installs look like — `tests/Feature/CategoriesPhaseTest.php` is where the collision, depth, cycle and dangling-parent cases actually live.
 
+**Download limits carry, but their spent counts are not carried — they are recomputed.** v1's three columns (`download_limit_enabled`, `download_limit_type`, `download_limit_count`) become v2's two (`download_limit` nullable, `download_limit_scope`), and the two scope names happen to match exactly. Nothing copies "how many downloads have already been used", because v2 derives that from its activity log, and `DownloadsPhase` has already put v1's download history there — actor and all, so a `per_user` limit arrives correctly spent per person. The one case to know about is `--history=none`: no downloads imported means every limited file arrives with a full allowance.
+
+Two v1 states have no v2 equivalent and are counted in the report rather than forced through. A limit enabled with a count of `0` (v1's column default, so this reads as switched on and never configured) is dropped — writing it through would produce a file nobody can ever download. And `download_limit_type` is an unconstrained `varchar(20)`, so anything that is not `total` or `per_user` falls back to `total` rather than failing a run of 200,000 rows over one bad string.
+
 **Slugs cannot go through the host.** `HasUniqueSlug::uniqueSlugFrom()` runs a query per candidate. On 200,000 files mostly called "Final", that is the entire import. `Transform\SlugReserver` follows the same rules in memory.
 
 **Reset needs its own delete order.** The first undo reversed the contract listing, which carries no dependency meaning, and failed on `users.role_id` (ON DELETE RESTRICT) with half the install already gone. `HostTables::deleteOrder()` is explicit, and a test keeps it in step with what gets written.
@@ -88,7 +92,6 @@ Preflight blocks; the operator acknowledges; the run skips and lists.
 |---|---|
 | Files encrypted at rest | v2 has none, and the per-file keys are wrapped by a master key that exists only in v1's `sys.config.php` |
 | Files on S3, GCS or Azure | v1 configures storage per file; v2 has one bucket |
-| Per-file download limits | v2 caps downloads on share links, not files |
 | Hidden assignments | v2 has no hidden state; creating them would show people files that were hidden from them |
 | Two-factor secrets | Encrypted with v1's key |
 | Duplicate, blank or invalid emails | **A blocker, not a skip.** v1 signs in by username and lets accounts share an address; v2 signs in by email and cannot. Picking a winner is deciding which client loses access |
@@ -108,6 +111,7 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Unit/OptionMapTest.php` | Types, units, inversions, junk rows tolerated |
 | `tests/Unit/HostTablesTest.php` | Delete order covers what is written, children first |
 | `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
+| `tests/Feature/FilesPhaseTest.php` | Download limits round-tripping, both scopes, and the two v1 states v2's enum cannot hold |
 
 ### Running it for real
 
@@ -139,4 +143,4 @@ Every release should be run against all three fixtures and reconciled with `proj
 - **Uploading a bundle through the browser.** A bundle carrying file bytes is not a form post, and one that does not still needs its files moved separately — both end with the operator putting something on the server.
 - **Migrating thumbnails.** A derived cache; v2 regenerates on first request.
 - **Legacy URL redirects.** Valuable, and possible because the id map is kept — but it belongs in the host, since it has to outlive this package.
-- **Building v2 features to receive v1 data.** At-rest encryption, per-file download caps, hidden assignments, category trees. Reported, not invented.
+- **Building v2 features to receive v1 data.** At-rest encryption, hidden assignments, category trees. Reported, not invented. Per-file download limits were on this list until v2 grew them — which is the shape of how a gap should close: the host gains the feature on its own terms, and this tool then carries the data into it. Not the other way round.

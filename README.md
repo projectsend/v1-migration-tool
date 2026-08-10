@@ -61,7 +61,7 @@ It reports these rather than guessing, and names every affected row:
   are wrapped by a master key that exists only in v1's `sys.config.php`.
 - **Files on S3, GCS or Azure.** v1's per-file external storage doesn't map onto v2's
   single-bucket setting.
-- **Per-file download limits** and **hidden assignments** — v2 has neither.
+- **Hidden assignments** — v2 has no hidden state.
 - **Two-factor secrets** — encrypted with v1's key; those users re-enrol.
 - **v1 options with no v2 equivalent** — v2 has ~43 settings where v1 had ~180.
 
