@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace ProjectSend\V1Migration\Preflight;
 
-use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\Schema;
 use ProjectSend\V1Migration\Host\HostTables;
 
@@ -30,11 +29,9 @@ final class HostSchemaCheck
     /**
      * @return list<Finding>
      */
-    public function run(?ConnectionInterface $connection = null): array
+    public function run(?string $connection = null): array
     {
-        $schema = $connection === null
-            ? Schema::connection(null)
-            : Schema::connection($connection->getName());
+        $schema = Schema::connection($connection);
 
         $findings = [];
 

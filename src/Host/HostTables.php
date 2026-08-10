@@ -82,6 +82,10 @@ final class HostTables
 
     public const MORPH_GROUP = 'App\Modules\Groups\Models\Group';
 
+    public const MORPH_FILE = 'App\Modules\Files\Models\File';
+
+    public const MORPH_FOLDER = 'App\Modules\Files\Models\Folder';
+
     /**
      * Table => the columns this package writes to it.
      *
