@@ -24,8 +24,29 @@ use ProjectSend\V1Migration\Source\MigrationSource;
  */
 final class MigrationContext
 {
-    /** @var array<string, array<string, mixed>> */
-    private array $notes = [];
+    /**
+     * Running totals, summed into the report on flush.
+     *
+     * @var array<string, array<string, int>>
+     */
+    private array $counters = [];
+
+    /**
+     * Reason => how many rows it applied to, per phase.
+     *
+     * @var array<string, array<string, int>>
+     */
+    private array $skips = [];
+
+    /**
+     * Facts rather than tallies — replaced on flush, never added up.
+     * Kept apart from the counters because they are not numbers: the
+     * settings phase records a map of v1 option name => why it was not
+     * carried, and summing that turned every reason into 0.
+     *
+     * @var array<string, array<string, mixed>>
+     */
+    private array $values = [];
 
     /**
      * How many source rows are read per pass.
@@ -73,7 +94,7 @@ final class MigrationContext
      */
     public function count(string $phase, string $key, int $by = 1): void
     {
-        $this->notes[$phase][$key] = (int) ($this->notes[$phase][$key] ?? 0) + $by;
+        $this->counters[$phase][$key] = ($this->counters[$phase][$key] ?? 0) + $by;
     }
 
     /**
@@ -83,12 +104,12 @@ final class MigrationContext
      */
     public function skipped(string $phase, string $reason): void
     {
-        $this->notes[$phase]['skipped'][$reason] = (int) ($this->notes[$phase]['skipped'][$reason] ?? 0) + 1;
+        $this->skips[$phase][$reason] = ($this->skips[$phase][$reason] ?? 0) + 1;
     }
 
     public function set(string $phase, string $key, mixed $value): void
     {
-        $this->notes[$phase][$key] = $value;
+        $this->values[$phase][$key] = $value;
     }
 
     /**
@@ -98,31 +119,36 @@ final class MigrationContext
      */
     public function flushNotes(): void
     {
-        if ($this->notes === []) {
+        if ($this->counters === [] && $this->skips === [] && $this->values === []) {
             return;
         }
 
-        $merged = $this->run->report ?? [];
+        $report = $this->run->report ?? [];
 
-        foreach ($this->notes as $phase => $values) {
-            foreach ($values as $key => $value) {
-                if (is_array($value)) {
-                    foreach ($value as $inner => $count) {
-                        $merged[$phase][$key][$inner] = (int) ($merged[$phase][$key][$inner] ?? 0) + (int) $count;
-                    }
-
-                    continue;
-                }
-
-                $merged[$phase][$key] = is_int($value)
-                    ? (int) ($merged[$phase][$key] ?? 0) + $value
-                    : $value;
+        foreach ($this->counters as $phase => $counts) {
+            foreach ($counts as $key => $by) {
+                $report[$phase][$key] = (int) ($report[$phase][$key] ?? 0) + $by;
             }
         }
 
-        $this->run->report = $merged;
+        foreach ($this->skips as $phase => $reasons) {
+            foreach ($reasons as $reason => $by) {
+                $report[$phase]['skipped'][$reason] = (int) ($report[$phase]['skipped'][$reason] ?? 0) + $by;
+            }
+        }
+
+        foreach ($this->values as $phase => $values) {
+            foreach ($values as $key => $value) {
+                $report[$phase][$key] = $value;
+            }
+        }
+
+        $this->run->report = $report;
         $this->run->save();
 
-        $this->notes = [];
+        $this->counters = [];
+        $this->skips = [];
+        $this->values = [];
     }
+
 }

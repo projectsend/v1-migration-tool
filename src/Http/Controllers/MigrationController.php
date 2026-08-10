@@ -18,6 +18,8 @@ use ProjectSend\V1Migration\Files\FileTransfer;
 use ProjectSend\V1Migration\Host\HostTables;
 use ProjectSend\V1Migration\Jobs\RunMigrationJob;
 use ProjectSend\V1Migration\Models\MigrationRun;
+use ProjectSend\V1Migration\Phases\Phase;
+use ProjectSend\V1Migration\Phases\PhaseRegistry;
 use ProjectSend\V1Migration\Source\SourceFactory;
 use ProjectSend\V1Migration\Source\V1Config;
 use Throwable;
@@ -49,7 +51,27 @@ final class MigrationController extends Controller
             'directModeAvailable' => (bool) config('v1-migration.direct_mode'),
             'hostIsFresh' => $this->hostIsFresh(),
             'strategies' => FileTransfer::strategies(),
+
+            // Both the order phases ran in and what to call them. The
+            // report is a JSON object, so without this the screen listed
+            // them in whatever order PHP happened to write them —
+            // starting with Files, which is neither first nor obvious.
+            'phaseLabels' => $this->phaseLabels(),
         ]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function phaseLabels(): array
+    {
+        $labels = [];
+
+        foreach (PhaseRegistry::all() as $phase) {
+            $labels[$phase->key()] = $phase->label();
+        }
+
+        return $labels;
     }
 
     /**

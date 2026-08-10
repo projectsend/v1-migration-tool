@@ -50,9 +50,10 @@ interface Props {
     directModeAvailable: boolean;
     hostIsFresh: boolean;
     strategies: string[];
+    phaseLabels: Record<string, string>;
 }
 
-export default function Migrate({ run: initialRun, directModeAvailable, hostIsFresh, strategies }: Props) {
+export default function Migrate({ run: initialRun, directModeAvailable, hostIsFresh, strategies, phaseLabels }: Props) {
     const { t } = useTranslation();
 
     // Held in state because polling updates it between visits — but the
@@ -147,7 +148,7 @@ export default function Migrate({ run: initialRun, directModeAvailable, hostIsFr
                     </div>
                 )}
 
-                {run?.status === 'completed' && <Report report={run.report} />}
+                {run?.status === 'completed' && <Report report={run.report} phaseLabels={phaseLabels} />}
 
                 {canStartAnother && <SourceForm directModeAvailable={directModeAvailable} strategies={strategies} />}
             </div>
@@ -220,10 +221,29 @@ function FindingList({ title, findings, variant }: { title: string; findings: Fi
     );
 }
 
-function Report({ report }: { report: Record<string, unknown> }) {
+/**
+ * Turns a report key into something readable.
+ *
+ * The report is written by the phases as machine keys, which is right
+ * for a JSON document and wrong for a screen: the first version of this
+ * rendered `imported_private_despite_v1_public_flag` verbatim, and a
+ * map of every setting that was not carried as a single line of JSON.
+ */
+function humanize(key: string): string {
+    const words = key.replace(/_/g, ' ').trim();
+
+    return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function Report({ report, phaseLabels }: { report: Record<string, unknown>; phaseLabels: Record<string, string> }) {
     const { t } = useTranslation();
 
-    const phases = Object.entries(report).filter(([key]) => key !== 'preflight' && key !== 'baseline');
+    // In the order the phases ran, so the report reads as an account of
+    // what happened rather than as a dump of a JSON object's keys.
+    const order = Object.keys(phaseLabels);
+    const phases = Object.entries(report)
+        .filter(([key]) => key !== 'preflight' && key !== 'baseline')
+        .sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
 
     return (
         <Card>
@@ -238,38 +258,65 @@ function Report({ report }: { report: Record<string, unknown> }) {
                     </AlertDescription>
                 </Alert>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                        <tbody>
-                            {phases.map(([phase, values]) => {
-                                const counts = values as Record<string, unknown>;
-                                const skipped = (counts.skipped ?? {}) as Record<string, number>;
-
-                                return (
-                                    <tr key={phase} className="border-border border-b align-top">
-                                        <th className="py-2 pr-4 text-left font-medium">{phase}</th>
-                                        <td className="py-2">
-                                            {Object.entries(counts)
-                                                .filter(([key]) => key !== 'skipped')
-                                                .map(([key, value]) => (
-                                                    <div key={key}>
-                                                        {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                                                    </div>
-                                                ))}
-                                            {Object.entries(skipped).map(([reason, count]) => (
-                                                <div key={reason} className="text-muted-foreground">
-                                                    {count} skipped — {reason}
-                                                </div>
-                                            ))}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <dl className="flex flex-col gap-4">
+                    {phases.map(([phase, values]) => (
+                        <div key={phase} className="border-border flex flex-col gap-1 border-b pb-3 last:border-0">
+                            <dt className="font-medium">{phaseLabels[phase] ?? humanize(phase)}</dt>
+                            <dd className="text-muted-foreground flex flex-col gap-1 text-sm">
+                                <PhaseDetail values={(values ?? {}) as Record<string, unknown>} />
+                            </dd>
+                        </div>
+                    ))}
+                </dl>
             </CardContent>
         </Card>
+    );
+}
+
+function PhaseDetail({ values }: { values: Record<string, unknown> }) {
+    const { t } = useTranslation();
+
+    return (
+        <>
+            {Object.entries(values).map(([key, value]) => {
+                if (key === 'skipped') {
+                    return Object.entries((value ?? {}) as Record<string, number>).map(([reason, count]) => (
+                        <span key={reason}>
+                            {t(':count skipped', { count })} — {reason}
+                        </span>
+                    ));
+                }
+
+                // A map rather than a tally — the settings phase's record
+                // of what it could not carry, and why. Collapsed, because
+                // it is 150 lines long on a real install and nobody needs
+                // it open by default.
+                if (value !== null && typeof value === 'object') {
+                    const entries = Object.entries(value as Record<string, unknown>);
+
+                    return (
+                        <details key={key}>
+                            <summary className="cursor-pointer">
+                                {humanize(key)} ({entries.length})
+                            </summary>
+                            <ul className="mt-1 flex flex-col gap-0.5 pl-4">
+                                {entries.map(([name, reason]) => (
+                                    <li key={name}>
+                                        <code className="text-xs">{name}</code> — {String(reason)}
+                                    </li>
+                                ))}
+                            </ul>
+                        </details>
+                    );
+                }
+
+                return (
+                    <span key={key}>
+                        {humanize(key)}: {String(value)}
+                    </span>
+                );
+            })}
+        </>
     );
 }
 

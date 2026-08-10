@@ -54,7 +54,12 @@ it('shows the screen to staff who may edit settings', function (): void {
             ->component('system/migrate')
             ->where('hostIsFresh', true)
             ->where('run', null)
-            ->has('strategies'));
+            ->has('strategies')
+            // Both the order to show the report in and what to call each
+            // phase — without it the screen lists them in whatever order
+            // PHP wrote the JSON.
+            ->has('phaseLabels.files')
+            ->has('phaseLabels.activity_log'));
 });
 
 it('queues a run and reports it as fresh', function (): void {
