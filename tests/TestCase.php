@@ -21,7 +21,9 @@ abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
-        return [V1MigrationServiceProvider::class];
+        // Inertia's own provider registers the assertInertia() test
+        // macro; without it the host would be supplying it.
+        return [\Inertia\ServiceProvider::class, V1MigrationServiceProvider::class];
     }
 
     protected function defineEnvironment($app): void
@@ -34,6 +36,10 @@ abstract class TestCase extends Orchestra
         ]);
 
         $app['config']->set('cache.default', 'array');
+
+        // Inertia renders into the host's root blade view, which does not
+        // exist here — see tests/Support/views/app.blade.php.
+        $app['config']->set('view.paths', [__DIR__.'/Support/views']);
         $app['config']->set('queue.default', 'sync');
 
         $app->make('router')->aliasMiddleware('staff', Support\TestStaffMiddleware::class);

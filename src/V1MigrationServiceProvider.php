@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace ProjectSend\V1Migration;
 
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use ProjectSend\V1Migration\Models\MigrationRun;
 use ProjectSend\V1Migration\Console\ImportCommand;
 use ProjectSend\V1Migration\Console\PreflightCommand;
 use ProjectSend\V1Migration\Console\ResetCommand;
@@ -55,6 +57,15 @@ class V1MigrationServiceProvider extends ServiceProvider
                 ResetCommand::class,
             ]);
         }
+
+        // `staff` and `edit_settings` are the host's, not this
+        // package's — see the contract above. Registering the group
+        // rather than middleware on each route keeps a new endpoint from
+        // being added ungated by accident.
+        Route::middleware(['web', 'auth', 'staff', 'can:edit_settings'])
+            ->group(__DIR__.'/../routes.php');
+
+        Route::model('run', MigrationRun::class);
 
         $this->publishes([
             __DIR__.'/../config/v1-migration.php' => config_path('v1-migration.php'),

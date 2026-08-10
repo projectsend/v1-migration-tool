@@ -25,6 +25,15 @@ class MigrationRun extends Model
 {
     public const STATUS_PENDING = 'pending';
 
+    /** Reading the source to decide whether the run may start. */
+    public const STATUS_CHECKING = 'checking';
+
+    /** Something would be lost. No flag overrides this. */
+    public const STATUS_BLOCKED = 'blocked';
+
+    /** Waiting for a human to confirm they have read what v2 cannot take. */
+    public const STATUS_NEEDS_ACKNOWLEDGEMENT = 'needs_acknowledgement';
+
     public const STATUS_RUNNING = 'running';
 
     public const STATUS_COMPLETED = 'completed';
