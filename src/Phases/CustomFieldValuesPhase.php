@@ -53,8 +53,8 @@ final class CustomFieldValuesPhase extends TablePhase
                 'client_custom_field_id' => $fieldId,
                 'user_id' => $userId,
                 'value' => LegacyText::decode($row['field_value'] ?? null),
-                'created_at' => $row['created_date'] ?? $now,
-                'updated_at' => $row['updated_date'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['created_date'] ?? null) ?? $now,
+                'updated_at' => $context->clock->toUtc($row['updated_date'] ?? null) ?? $now,
             ];
         }
 

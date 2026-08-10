@@ -59,7 +59,7 @@ final class GroupMembersPhase extends TablePhase
             $insert[] = [
                 'group_id' => $groupId,
                 'user_id' => $userId,
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ];
         }

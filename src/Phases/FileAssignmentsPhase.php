@@ -101,7 +101,7 @@ final class FileAssignmentsPhase extends TablePhase
                 'file_id' => $fileId,
                 'assignable_type' => $type,
                 'assignable_id' => $target,
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ];
         }

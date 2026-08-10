@@ -32,6 +32,19 @@
 # is the honest starting point for a migration: an install someone has
 # just set up and not yet used.
 #
+# ## Stop the instances you are not using
+#
+# Each instance is a whole stack, and its MySQL is the expensive part.
+# Docker\'s VM has its own memory limit — far below the host\'s — and when
+# it is reached the kernel kills MySQL rather than refusing to start it.
+# That surfaces much later as a bare "getaddrinfo for db failed" from a
+# page that was working ten minutes earlier, with nothing in the app\'s
+# own logs. `docker ps -a` showing `Exited (137)` is the tell.
+#
+# So: `scripts/sim.sh down` an instance when you are finished with it, or
+# `docker compose -p projectsend-<name> stop` to keep its data and free
+# the memory. Raising Docker\'s memory limit is the other half of the fix.
+#
 # ## Why fixtures are staged with `cp -al`
 #
 # A hardlink cannot cross a mount point, and the app container sees each

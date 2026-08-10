@@ -114,7 +114,10 @@ final class FilesPhase extends TablePhase
             }
 
             $sourcePath = V1FilePath::for($row, $dated);
-            $uploadedAt = isset($row['timestamp']) ? (string) $row['timestamp'] : null;
+            // Converted before it picks the YYYY/MM folder, so a file's
+            // storage path and its created_at never disagree about which
+            // month it was uploaded in.
+            $uploadedAt = $context->clock->toUtc(isset($row['timestamp']) ? (string) $row['timestamp'] : null);
             $targetPath = $transfer->targetPath($sourcePath, $uploadedAt);
             $result = $transfer->transfer($sourcePath, $targetPath);
 
@@ -140,8 +143,8 @@ final class FilesPhase extends TablePhase
                 'size' => $result['size'] > 0 ? $result['size'] : (int) ($row['size'] ?? 0),
                 'checksum' => $result['checksum'],
                 'public' => (int) ($row['public_allow'] ?? 0) === 1,
-                'expires_at' => (int) ($row['expires'] ?? 0) === 1 ? ($row['expiry_date'] ?? null) : null,
-                'created_at' => $row['timestamp'] ?? $now,
+                'expires_at' => (int) ($row['expires'] ?? 0) === 1 ? $context->clock->toUtc($row['expiry_date'] ?? null) : null,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

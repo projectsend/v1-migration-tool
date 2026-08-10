@@ -99,6 +99,12 @@ A development checkout cannot stand in for that instance: the tool imports into 
 fresh install only, and a checkout has content and shares its file storage with
 everything else you have been doing.
 
+Stop instances you are not using (`scripts/sim.sh down`, or `docker compose -p
+projectsend-<name> stop` to keep their data). Each one runs its own MySQL, and
+Docker\'s VM has a memory limit well below the host\'s — when it is reached the
+kernel kills MySQL, which surfaces later as `getaddrinfo for db failed` on a page
+that worked ten minutes earlier. `Exited (137)` in `docker ps -a` is the tell.
+
 Tests run against a throwaway Testbench app with no host present, so the host tables are
 replicated in `tests/Support/HostSchema.php`. That replica is a convenience, not the
 contract — the contract is `src/Host/HostTables.php`, and it is verified against the real

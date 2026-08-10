@@ -117,7 +117,7 @@ final class ActivityLogPhase extends TablePhase
                 'subject_id' => $subjectId,
                 'subject_name' => $subjectName,
                 'context' => $this->context($row['details'] ?? null),
-                'created_at' => $row['timestamp'] ?? now(),
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? now(),
             ];
         }
 

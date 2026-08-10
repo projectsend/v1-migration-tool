@@ -93,7 +93,7 @@ final class FoldersPhase implements Phase
                 'slug' => $slugs->reserve($name),
                 'allow_client_uploads' => false,
                 'path' => $parentId === null ? '/' : ($paths[$parent] ?? '/'),
-                'created_at' => $folder['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($folder['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

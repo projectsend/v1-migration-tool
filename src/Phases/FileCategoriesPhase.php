@@ -61,7 +61,7 @@ final class FileCategoriesPhase extends TablePhase
             $insert[] = [
                 'category_id' => $categoryId,
                 'file_id' => $fileId,
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ];
         }

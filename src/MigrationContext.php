@@ -6,6 +6,7 @@ namespace ProjectSend\V1Migration;
 
 use ProjectSend\V1Migration\Models\MigrationRun;
 use ProjectSend\V1Migration\Source\MigrationSource;
+use ProjectSend\V1Migration\Transform\LegacyClock;
 
 /**
  * Everything a phase needs, and nothing it should reach around for.
@@ -62,13 +63,25 @@ final class MigrationContext
      */
     public readonly int $insertChunk;
 
+    /**
+     * Turns v1's naive wall-clock timestamps into UTC. Built once here
+     * rather than per phase because the source zone comes off the
+     * manifest, and manifest() counts every table on the way past — a
+     * cost worth paying once a run, not once a row. See LegacyClock for
+     * why every timestamp has to go through it.
+     */
+    public readonly LegacyClock $clock;
+
     public function __construct(
         public readonly MigrationRun $run,
         public readonly MigrationSource $source,
         public readonly IdMap $idMap,
         int $readChunk = 1000,
         int $insertChunk = 500,
+        ?LegacyClock $clock = null,
     ) {
+        $this->clock = $clock ?? new LegacyClock($source->manifest()->timezone);
+
         // Clamped rather than validated: these come from configuration an
         // operator can edit, and a zero would turn every chunked loop into
         // an infinite one.

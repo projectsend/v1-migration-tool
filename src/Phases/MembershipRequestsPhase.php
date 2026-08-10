@@ -65,8 +65,8 @@ final class MembershipRequestsPhase extends TablePhase
                 'group_id' => $groupId,
                 'user_id' => $userId,
                 'status' => $denied ? 'denied' : 'pending',
-                'denied_at' => $denied ? ($row['timestamp'] ?? $now) : null,
-                'created_at' => $row['timestamp'] ?? $now,
+                'denied_at' => $denied ? ($context->clock->toUtc($row['timestamp'] ?? null) ?? $now) : null,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ];
         }

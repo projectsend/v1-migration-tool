@@ -109,7 +109,7 @@ final class RolesPhase extends TablePhase
                 // account manages — that is v2's Client Manager idea —
                 // so an imported custom role is never client-scoped.
                 'client_scoped' => false,
-                'created_at' => $row['created_date'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['created_date'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

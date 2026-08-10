@@ -60,7 +60,7 @@ final class GroupsPhase extends TablePhase
                 'slug' => $slugs->reserve($name),
                 'description' => LegacyText::decode($row['description'] ?? null),
                 'public' => (int) ($row['public'] ?? 0) === 1,
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

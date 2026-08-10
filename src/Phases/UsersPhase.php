@@ -108,7 +108,7 @@ final class UsersPhase extends TablePhase
                 // Converting here would make every quota unlimited.
                 'storage_quota_mb' => max(0, (int) ($row['max_disk_quota'] ?? 0)),
 
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

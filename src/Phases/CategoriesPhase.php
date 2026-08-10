@@ -109,7 +109,7 @@ final class CategoriesPhase implements Phase
             $id = (int) DB::table(HostTables::CATEGORIES)->insertGetId([
                 'name' => $name,
                 'color' => 'gray',
-                'created_at' => $category['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($category['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

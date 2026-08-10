@@ -87,7 +87,7 @@ final class CustomFieldsPhase extends TablePhase
                 'client_editability' => 'hidden',
                 'client_contexts' => json_encode([], JSON_THROW_ON_ERROR),
                 'sort_order' => (int) ($row['sort_order'] ?? 0),
-                'created_at' => $row['created_date'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['created_date'] ?? null) ?? $now,
                 'updated_at' => $now,
             ]);
 

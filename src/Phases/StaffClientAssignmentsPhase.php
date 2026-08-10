@@ -62,7 +62,7 @@ final class StaffClientAssignmentsPhase extends TablePhase
             $insert[] = [
                 'staff_id' => $staffId,
                 'client_id' => $clientId,
-                'created_at' => $row['timestamp'] ?? $now,
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? $now,
                 'updated_at' => $now,
             ];
         }

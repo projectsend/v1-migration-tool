@@ -108,7 +108,7 @@ final class DownloadsPhase extends TablePhase
                 'subject_id' => $fileId,
                 'subject_name' => null,
                 'context' => null,
-                'created_at' => $row['timestamp'] ?? now(),
+                'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? now(),
             ];
         }
 

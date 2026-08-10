@@ -71,6 +71,20 @@ final class OptionMap
 
         'two_factor_required' => ['two_factor_enforcement', 'two_factor'],
         'selected_clients_template' => ['theme', 'theme'],
+
+        // The zone v1 rendered every date in. Carrying it is not
+        // cosmetic: the timestamps this package imports were written as
+        // wall-clock time in *this* zone and are converted out of it on
+        // the way in (see LegacyClock), so the destination has to be told
+        // the same thing or the two halves disagree and the whole history
+        // lands an offset out.
+        //
+        // v1's companion `timeformat` option is deliberately absent. It
+        // holds a raw PHP date() format string, and v2 formats dates from
+        // the reader's locale through Intl — there is no field for it to
+        // become, and honouring it would mean re-implementing date() in
+        // the browser.
+        'timezone' => ['timezone', 'timezone'],
     ];
 
     /**
@@ -228,6 +242,14 @@ final class OptionMap
             // closest-looking theme for someone is a guess about their
             // brand, not a migration.
             'theme' => in_array($value, ['default', 'gallery'], true) ? $value : null,
+
+            // Checked against this PHP's own tzdata rather than a pattern:
+            // v1 installs carry zones that have since been renamed or
+            // dropped (its bundled fallback list froze around PHP 5.3),
+            // and v2's TimezoneRegistry validates against the same list,
+            // so anything it would refuse is better reported as unmapped
+            // than written and silently ignored forever after.
+            'timezone' => in_array($value, \DateTimeZone::listIdentifiers(), true) ? $value : null,
 
             default => null,
         };
