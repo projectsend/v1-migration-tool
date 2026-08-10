@@ -47,6 +47,20 @@ final class ResetCommand extends Command
             return self::SUCCESS;
         }
 
+        // A run that was refused at preflight, or is still waiting to be
+        // acknowledged, never wrote anything — there is no baseline
+        // because there was nothing to take one of. Demanding one would
+        // leave a blocked run permanently stuck on the screen with no way
+        // to dismiss it and start again.
+        if ($run->started_at === null) {
+            $run->idMap()->delete();
+            $run->delete();
+
+            $this->info("Run {$run->id} never started importing; cleared it.");
+
+            return self::SUCCESS;
+        }
+
         $baseline = $run->report['baseline'] ?? null;
 
         if (! is_array($baseline)) {

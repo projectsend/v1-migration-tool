@@ -54,7 +54,18 @@ interface Props {
 
 export default function Migrate({ run: initialRun, directModeAvailable, hostIsFresh, strategies }: Props) {
     const { t } = useTranslation();
+
+    // Held in state because polling updates it between visits — but the
+    // server is authoritative whenever it does send a fresh one, and
+    // useState keeps its *initial* value across re-renders. Without the
+    // effect below, submitting the form created a run, queued the job,
+    // and left the screen showing the empty form as though nothing had
+    // happened: the new prop arrived and was ignored.
     const [run, setRun] = useState<Run | null>(initialRun);
+
+    useEffect(() => {
+        setRun(initialRun);
+    }, [initialRun]);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: t('Settings'), href: '/system/settings' },
@@ -62,6 +73,13 @@ export default function Migrate({ run: initialRun, directModeAvailable, hostIsFr
     ];
 
     const busy = run !== null && ['pending', 'checking', 'running'].includes(run.status);
+
+    // A completed run means this install is no longer fresh, whatever
+    // the prop from the last server render says — and offering the form
+    // again under the report would be an invitation to do something the
+    // server will refuse.
+    const canStartAnother =
+        hostIsFresh && ! busy && (run === null || ['failed', 'blocked'].includes(run.status));
 
     const poll = useCallback(async (id: number) => {
         const response = await fetch(`/system/migrate/runs/${id}`, {
@@ -82,14 +100,6 @@ export default function Migrate({ run: initialRun, directModeAvailable, hostIsFr
 
         return () => clearInterval(timer);
     }, [busy, poll, run]);
-
-    // A finished run changes what the rest of the page may do, and the
-    // server decides that — not this component.
-    useEffect(() => {
-        if (run !== null && run.status === 'completed' && initialRun?.status !== 'completed') {
-            router.reload({ only: ['hostIsFresh'] });
-        }
-    }, [run, initialRun]);
 
     const findings = run?.report?.preflight ?? [];
     const blockers = findings.filter((f) => f.level === 'blocker');
@@ -139,9 +149,7 @@ export default function Migrate({ run: initialRun, directModeAvailable, hostIsFr
 
                 {run?.status === 'completed' && <Report report={run.report} />}
 
-                {!busy && run?.status !== 'needs_acknowledgement' && hostIsFresh && (
-                    <SourceForm directModeAvailable={directModeAvailable} strategies={strategies} />
-                )}
+                {canStartAnother && <SourceForm directModeAvailable={directModeAvailable} strategies={strategies} />}
             </div>
         </AppLayout>
     );
