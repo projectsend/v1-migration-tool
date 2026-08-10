@@ -14,14 +14,14 @@ it('passes against a host that matches the declared contract', function (): void
 });
 
 it('blocks when a table the importer writes is missing', function (): void {
-    Schema::drop('share_links');
+    Schema::drop('client_custom_field_values');
 
     $findings = (new HostSchemaCheck)->run();
 
     expect($findings)->toHaveCount(1)
         ->and($findings[0]->level)->toBe(Finding::BLOCKER)
         ->and($findings[0]->code)->toBe('host.table_missing')
-        ->and($findings[0]->context['table'])->toBe('share_links');
+        ->and($findings[0]->context['table'])->toBe('client_custom_field_values');
 });
 
 it('blocks when a column the importer writes is missing, and names it', function (): void {

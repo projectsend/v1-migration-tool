@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace ProjectSend\V1Migration;
 
 use Illuminate\Support\ServiceProvider;
+use ProjectSend\V1Migration\Console\ImportCommand;
+use ProjectSend\V1Migration\Console\PreflightCommand;
+use ProjectSend\V1Migration\Console\ResetCommand;
+use ProjectSend\V1Migration\Console\VerifyCommand;
 
 /**
  * Entry point for the ProjectSend v1 → v2 migration tool.
@@ -42,6 +46,15 @@ class V1MigrationServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                PreflightCommand::class,
+                ImportCommand::class,
+                VerifyCommand::class,
+                ResetCommand::class,
+            ]);
+        }
 
         $this->publishes([
             __DIR__.'/../config/v1-migration.php' => config_path('v1-migration.php'),

@@ -44,6 +44,14 @@ final class IdMap
      */
     public function preload(string $entity): void
     {
+        // A phase that spans many chunks asks on every one; loading
+        // again each time would be hundreds of pointless queries, and
+        // the cache absorbs its own writes on flush() so it cannot go
+        // stale within a process.
+        if (isset($this->preloaded[$entity])) {
+            return;
+        }
+
         $this->preloaded[$entity] = MigrationIdMap::query()
             ->where('run_id', $this->runId)
             ->where('entity', $entity)
@@ -109,9 +117,16 @@ final class IdMap
             ->all();
     }
 
-    public function record(string $entity, int $sourceId, int $targetId): void
+    /**
+     * @param  string|null  $note  set when the row was *not* created by
+     *         this run — a v1 account or role that matched something
+     *         already in v2. Reset consults it: deleting a row this tool
+     *         only adopted would take the operator's own administrator
+     *         account with it.
+     */
+    public function record(string $entity, int $sourceId, int $targetId, ?string $note = null): void
     {
-        $this->buffer($entity, $sourceId, $targetId, MigrationIdMap::STATUS_IMPORTED, null);
+        $this->buffer($entity, $sourceId, $targetId, MigrationIdMap::STATUS_IMPORTED, $note);
     }
 
     /**

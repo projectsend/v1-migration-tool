@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property array<string, mixed> $options
  * @property array<string, mixed>|null $report
  * @property string|null $error
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $finished_at
  */
 class MigrationRun extends Model
 {

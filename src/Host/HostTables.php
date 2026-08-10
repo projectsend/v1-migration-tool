@@ -53,8 +53,6 @@ final class HostTables
 
     public const FILE_ASSIGNMENTS = 'file_assignments';
 
-    public const SHARE_LINKS = 'share_links';
-
     public const CLIENT_CUSTOM_FIELDS = 'client_custom_fields';
 
     public const CLIENT_CUSTOM_FIELD_VALUES = 'client_custom_field_values';
@@ -64,12 +62,6 @@ final class HostTables
     public const SETTINGS = 'settings';
 
     public const MAIL_PROVIDER_SETTINGS = 'mail_provider_settings';
-
-    public const LDAP_SETTINGS = 'ldap_settings';
-
-    public const EMAIL_TEMPLATES = 'email_templates';
-
-    public const NOTIFICATION_PREFERENCES = 'notification_preferences';
 
     /**
      * Morph type strings written into the two polymorphic assignment
@@ -137,11 +129,6 @@ final class HostTables
                 'file_id', 'assignable_type', 'assignable_id',
                 'created_at', 'updated_at',
             ],
-            self::SHARE_LINKS => [
-                'shareable_type', 'shareable_id', 'token', 'created_by',
-                'expires_at', 'max_downloads', 'downloads_count',
-                'created_at', 'updated_at',
-            ],
             self::CLIENT_CUSTOM_FIELDS => [
                 'name', 'label', 'type', 'options', 'required',
                 'client_editability', 'client_contexts', 'sort_order',
@@ -161,15 +148,42 @@ final class HostTables
                 'provider', 'host', 'port', 'username', 'password', 'encryption',
                 'from_address', 'from_name',
             ],
-            self::LDAP_SETTINGS => [
-                'active', 'host', 'port', 'encryption', 'bind_dn', 'bind_password',
-                'base_dn', 'user_filter', 'email_attribute', 'name_attribute',
-                'auto_provision', 'auto_approve',
-            ],
-            self::EMAIL_TEMPLATES => ['slot', 'subject', 'body'],
-            self::NOTIFICATION_PREFERENCES => [
-                'user_id', 'type', 'email_enabled', 'created_at', 'updated_at',
-            ],
+        ];
+    }
+
+    /**
+     * The order `:reset` must delete in — children before the rows they
+     * point at.
+     *
+     * Spelled out rather than derived by reversing `writes()`, because
+     * `writes()` is a contract listing and its order carries no meaning.
+     * Reversing it put `roles` before `users`, and `users.role_id` is
+     * `ON DELETE RESTRICT`, so the very first undo attempt failed on a
+     * foreign key with half the install already deleted.
+     *
+     * @return list<string>
+     */
+    public static function deleteOrder(): array
+    {
+        return [
+            self::ACTIVITY_LOG,
+            self::CLIENT_CUSTOM_FIELD_VALUES,
+            self::CLIENT_CUSTOM_FIELDS,
+            self::CATEGORY_FILE,
+            self::FILE_ASSIGNMENTS,
+            self::FOLDER_ASSIGNMENTS,
+            self::FILES,
+            self::FOLDERS,
+            self::CATEGORIES,
+            self::MEMBERSHIP_REQUESTS,
+            self::GROUP_MEMBERS,
+            self::GROUPS,
+            self::STAFF_CLIENT_ASSIGNMENTS,
+            self::ROLE_PERMISSION,
+            self::USERS,
+            self::ROLES,
+            self::SETTINGS,
+            self::MAIL_PROVIDER_SETTINGS,
         ];
     }
 
