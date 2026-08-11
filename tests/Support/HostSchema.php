@@ -256,6 +256,16 @@ final class HostSchema
             $table->timestamps();
         });
 
+        // 2026_09_01_090000_create_captcha_providers_table.php
+        Schema::create('captcha_providers', function (Blueprint $table): void {
+            $table->id();
+            $table->string('provider')->unique();
+            $table->string('site_key')->nullable();
+            $table->text('secret_key')->nullable();
+            $table->decimal('score_threshold', 3, 2)->nullable()->default(0.5);
+            $table->timestamps();
+        });
+
         // 2026_08_27_090100_create_ldap_settings_table.php + auto_approve.
         Schema::create('ldap_settings', function (Blueprint $table): void {
             $table->id();

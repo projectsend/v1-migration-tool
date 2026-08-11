@@ -32,6 +32,7 @@ final class PhaseRegistry
         return [
             new SettingsPhase,
             new MailSettingsPhase,
+            new CaptchaSettingsPhase,
             new RolesPhase,
             new RolePermissionsPhase,
             new UsersPhase,

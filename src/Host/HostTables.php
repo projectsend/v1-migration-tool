@@ -63,6 +63,8 @@ final class HostTables
 
     public const MAIL_PROVIDER_SETTINGS = 'mail_provider_settings';
 
+    public const CAPTCHA_PROVIDERS = 'captcha_providers';
+
     /**
      * Morph type strings written into the two polymorphic assignment
      * tables. The host registers no morph map (verified: no
@@ -149,7 +151,38 @@ final class HostTables
                 'provider', 'host', 'port', 'username', 'password', 'encryption',
                 'from_address', 'from_name',
             ],
+            self::CAPTCHA_PROVIDERS => [
+                'provider', 'site_key', 'secret_key', 'score_threshold',
+                'created_at', 'updated_at',
+            ],
         ];
+    }
+
+    /**
+     * Tables whose absence is a warning rather than a blocker.
+     *
+     * The rule everywhere else is that a missing table means this is not
+     * a host this tool knows how to write to, and guessing which of the
+     * two is out of date is not the tool's job. That rule is right for
+     * the tables carrying the installation itself — an accounts table
+     * without `storage_quota_mb` is a genuine mismatch.
+     *
+     * It is disproportionate for a table that only exists because the
+     * host grew an optional feature after this tool learned to fill it
+     * in. A v2 from before CAPTCHA settings existed is still a perfectly
+     * good destination for every account, file and share; refusing the
+     * whole migration to protect a settings screen would trade something
+     * that matters for something that does not. The phase skips and says
+     * so in the report.
+     *
+     * A table that *exists* with the wrong columns is still a blocker:
+     * that is a real disagreement about shape, not a missing feature.
+     *
+     * @return list<string>
+     */
+    public static function optional(): array
+    {
+        return [self::CAPTCHA_PROVIDERS];
     }
 
     /**
@@ -185,6 +218,7 @@ final class HostTables
             self::ROLES,
             self::SETTINGS,
             self::MAIL_PROVIDER_SETTINGS,
+            self::CAPTCHA_PROVIDERS,
         ];
     }
 
