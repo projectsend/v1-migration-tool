@@ -104,6 +104,21 @@ final class OptionMap
     ];
 
     /**
+     * Options carried by a phase of their own rather than by prefix.
+     *
+     * CAPTCHA is the case that needs an exact list: its eight v1 options
+     * share no single prefix (`captcha_method`, `recaptcha_*`,
+     * `cloudflare_turnstile_*`), and a `recaptcha_` prefix rule would be
+     * a coincidence away from claiming an option this tool does not
+     * actually carry.
+     *
+     * @var array<string, string>
+     */
+    private const CARRIED_BY_PHASE = [
+        'captcha' => 'CAPTCHA settings (Settings → CAPTCHA)',
+    ];
+
+    /**
      * State that belongs to the v1 installation itself. Copying any of
      * it would be worse than dropping it: `base_uri` would point v2 at
      * v1's URL, `database_version` would convince the host it had
@@ -174,6 +189,12 @@ final class OptionMap
 
             if (in_array($name, self::INSTALL_STATE, true)) {
                 $unmapped[$name] = 'install state';
+
+                continue;
+            }
+
+            if (in_array($name, CaptchaMap::optionNames(), true)) {
+                $unmapped[$name] = 'carried by '.self::CARRIED_BY_PHASE['captcha'];
 
                 continue;
             }

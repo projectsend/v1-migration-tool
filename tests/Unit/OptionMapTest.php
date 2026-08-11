@@ -138,3 +138,22 @@ it('takes only a valid admin email address', function (): void {
         ->and(OptionMap::convert(['admin_email_address' => ''])['settings'])
         ->toBe(['admin_notification_emails' => []]);
 });
+
+// The captcha options used to read as "no equivalent in v2", which was
+// true until v2 grew one. A report that still said so would send an
+// administrator to re-key three vendor consoles for nothing.
+it('reports the captcha options as carried, not as lost', function (string $option): void {
+    $converted = OptionMap::convert([$option => 'anything']);
+
+    expect($converted['settings'])->toBe([])
+        ->and($converted['unmapped'][$option])->toContain('CAPTCHA settings');
+})->with([
+    'captcha_method',
+    'recaptcha_site_key',
+    'recaptcha_secret_key',
+    'recaptcha_v3_site_key',
+    'recaptcha_v3_secret_key',
+    'recaptcha_v3_score_threshold',
+    'cloudflare_turnstile_site_key',
+    'cloudflare_turnstile_secret_key',
+]);

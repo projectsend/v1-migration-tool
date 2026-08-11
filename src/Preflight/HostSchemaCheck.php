@@ -23,6 +23,14 @@ use ProjectSend\V1Migration\Host\HostTables;
  * "import what fits" mode: a users table without `storage_quota_mb` is
  * a host this version of the tool does not know how to write to, and
  * guessing which of the two is out of date is not the tool's job.
+ *
+ * The single exception is a table on HostTables::optional(), which exists
+ * only because the host grew a feature that is not part of carrying an
+ * installation across. Its absence is a NOTE and its phase skips — see
+ * that method for why the general rule would be disproportionate there.
+ * A missing *column* is still a blocker even on an optional table: a
+ * table that exists with the wrong shape is a real disagreement, not an
+ * absent feature.
  */
 final class HostSchemaCheck
 {
@@ -34,14 +42,21 @@ final class HostSchemaCheck
         $schema = Schema::connection($connection);
 
         $findings = [];
+        $optional = HostTables::optional();
 
         foreach (HostTables::writes() as $table => $columns) {
             if (! $schema->hasTable($table)) {
-                $findings[] = Finding::blocker(
-                    'host.table_missing',
-                    "The host has no `{$table}` table. This install is not a ProjectSend v2 database, or is older than this tool supports.",
-                    ['table' => $table],
-                );
+                $findings[] = in_array($table, $optional, true)
+                    ? Finding::note(
+                        'host.optional_table_missing',
+                        "This ProjectSend is older than the `{$table}` feature, so that part will be skipped. Everything else imports normally.",
+                        ['table' => $table],
+                    )
+                    : Finding::blocker(
+                        'host.table_missing',
+                        "The host has no `{$table}` table. This install is not a ProjectSend v2 database, or is older than this tool supports.",
+                        ['table' => $table],
+                    );
 
                 continue;
             }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace ProjectSend\V1Migration\Host;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * The highest id in every host table before a run starts.
@@ -29,7 +30,18 @@ final class Baseline
     {
         $baseline = [];
 
+        $optional = HostTables::optional();
+
         foreach (array_keys(HostTables::writes()) as $table) {
+            // An optional table may legitimately not be there — the host
+            // is older than the feature, preflight said so as a note, and
+            // the phase that would fill it skips. Everything else is
+            // guaranteed present by then, because HostSchemaCheck blocks
+            // the run otherwise.
+            if (in_array($table, $optional, true) && ! Schema::hasTable($table)) {
+                continue;
+            }
+
             $baseline[$table] = (int) (DB::table($table)->max('id') ?? 0);
         }
 

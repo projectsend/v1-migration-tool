@@ -96,3 +96,30 @@ it('blocks a run against an install that already has content', function (): void
         ->and($findings[0]->code)->toBe('host.not_fresh')
         ->and($findings[0]->context['table'])->toBe('categories');
 });
+
+// The one crack in "a missing table is always a blocker", and its
+// boundary. A destination that predates an optional host feature is still
+// a good destination for the installation itself; a destination whose
+// table is *there* but the wrong shape is a genuine disagreement.
+it('only notes an optional table the host is too old to have', function (): void {
+    Schema::drop(HostTables::CAPTCHA_PROVIDERS);
+
+    $findings = (new HostSchemaCheck)->run();
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(Finding::NOTE)
+        ->and($findings[0]->code)->toBe('host.optional_table_missing')
+        ->and($findings[0]->message)->toContain('Everything else imports normally');
+});
+
+it('still blocks when an optional table exists with the wrong shape', function (): void {
+    Schema::table(HostTables::CAPTCHA_PROVIDERS, function ($table): void {
+        $table->dropColumn('secret_key');
+    });
+
+    $findings = (new HostSchemaCheck)->run();
+
+    expect($findings)->toHaveCount(1)
+        ->and($findings[0]->level)->toBe(Finding::BLOCKER)
+        ->and($findings[0]->context['columns'])->toBe(['secret_key']);
+});

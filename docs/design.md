@@ -23,6 +23,10 @@ That decision has consequences the rest of this document keeps returning to.
 | Add a sidebar entry | The host's sidebar is a hardcoded array with no hook | `/system/migrate` is the documented URL. A one-time tool does not earn a permanent navigation slot |
 
 > Writing into another application's schema by name is a contract nothing enforces at compile time. `Host\HostTables` declares every table and column this package writes, and `Preflight\HostSchemaCheck` verifies it against the live database **before the first write**. A missing column is a hard stop, never a partial import.
+>
+> One table is on `HostTables::optional()`, and its absence is a note rather than a blocker: `captcha_providers` exists only because the host grew a feature that is not part of carrying an installation across. A v2 from before it is still a perfectly good destination for every account, file and share, and refusing the whole migration to protect a settings screen would trade something that matters for something that does not. A table that *exists* with the wrong columns is still a blocker on the optional list too — that is a real disagreement about shape, not an absent feature.
+>
+> "Optional" has to reach two places a phase guard cannot: `Baseline::capture()` reads `max(id)` from every table in the contract *before* the first phase runs, and `:reset` deletes from every table in the delete order. Both skip a table the host has not got. The first was found by running against a real older host — the guard inside the phase was correct and never got the chance to fire, because the run died taking its baseline.
 
 ## The one thing the host had to change
 
@@ -80,6 +84,16 @@ Worth knowing when reading the fixtures: the seeder gave every category a global
 
 Two v1 states have no v2 equivalent and are counted in the report rather than forced through. A limit enabled with a count of `0` (v1's column default, so this reads as switched on and never configured) is dropped — writing it through would produce a file nobody can ever download. And `download_limit_type` is an unconstrained `varchar(20)`, so anything that is not `total` or `per_user` falls back to `total` rather than failing a run of 200,000 rows over one bad string.
 
+**CAPTCHA keys are carried for every provider, and switched on for at most one.** v1 kept a site/secret pair for each of the three services it supported and one option naming the active one; v2 keeps the pairs in a table and names the active one in a setting, so the shapes differ but the vocabulary nearly matches. All three pairs come across, not just the active one — v1 let an administrator try Turnstile, switch to reCAPTCHA and switch back without re-keying, and v2 keeps keys per provider for the same reason.
+
+A provider whose pair is incomplete does not become the active one. v2 already treats half-configured as switched off, so writing it through would produce an installation whose settings screen names a service while nothing is actually being checked; the keys are still carried and the report says what is missing, so it is a form to finish rather than a gap to discover.
+
+The secret is encrypted on the way in, for the reason the SMTP password is — but the failure mode is quieter and therefore worse. v2's verification deliberately fails *open* when it cannot get an answer, so a plaintext secret that throws on decrypt does not announce itself; it just stops protecting the forms.
+
+And the key source is set to `own` whenever a provider is switched on. v2's default is `managed` — "use the platform's keys" — which is inert self-hosted and authoritative on cloud, so leaving it would carry the keys across and then ignore them. It is written only when there is something to point at: an install that had no CAPTCHA keeps whatever its destination provides.
+
+The four per-form switches are left at v2's defaults, all on. v1's CAPTCHA covered login, registration and password reset — the three forms both versions have — so the shared behaviour matches; the fourth is comments from visitors, which v1 had no opinion about because it had no comments.
+
 **Slugs cannot go through the host.** `HasUniqueSlug::uniqueSlugFrom()` runs a query per candidate. On 200,000 files mostly called "Final", that is the entire import. `Transform\SlugReserver` follows the same rules in memory.
 
 **Reset needs its own delete order.** The first undo reversed the contract listing, which carries no dependency meaning, and failed on `users.role_id` (ON DELETE RESTRICT) with half the install already gone. `HostTables::deleteOrder()` is explicit, and a test keeps it in step with what gets written.
@@ -112,6 +126,7 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Unit/HostTablesTest.php` | Delete order covers what is written, children first |
 | `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
 | `tests/Feature/FilesPhaseTest.php` | Download limits round-tripping, both scopes, and the two v1 states v2's enum cannot hold |
+| `tests/Feature/CaptchaSettingsPhaseTest.php` | All three providers, the secret encrypted the way the host reads it, the key source, incomplete pairs, a host too old to have the table, and the baseline that has to skip it too. **No fixture covers any of this** — ps-seed leaves the captcha options empty, so these tests are the only coverage |
 
 ### Running it for real
 
@@ -143,4 +158,4 @@ Every release should be run against all three fixtures and reconciled with `proj
 - **Uploading a bundle through the browser.** A bundle carrying file bytes is not a form post, and one that does not still needs its files moved separately — both end with the operator putting something on the server.
 - **Migrating thumbnails.** A derived cache; v2 regenerates on first request.
 - **Legacy URL redirects.** Valuable, and possible because the id map is kept — but it belongs in the host, since it has to outlive this package.
-- **Building v2 features to receive v1 data.** At-rest encryption, hidden assignments, category trees. Reported, not invented. Per-file download limits were on this list until v2 grew them — which is the shape of how a gap should close: the host gains the feature on its own terms, and this tool then carries the data into it. Not the other way round.
+- **Building v2 features to receive v1 data.** At-rest encryption, hidden assignments, category trees. Reported, not invented. Per-file download limits were on this list until v2 grew them, and the CAPTCHA settings followed the same route a release later — which is the shape of how a gap should close: the host gains the feature on its own terms, and this tool then carries the data into it. Not the other way round.
