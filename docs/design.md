@@ -25,6 +25,8 @@ That decision has consequences the rest of this document keeps returning to.
 > Writing into another application's schema by name is a contract nothing enforces at compile time. `Host\HostTables` declares every table and column this package writes, and `Preflight\HostSchemaCheck` verifies it against the live database **before the first write**. A missing column is a hard stop, never a partial import.
 >
 > One table is on `HostTables::optional()`, and its absence is a note rather than a blocker: `captcha_providers` exists only because the host grew a feature that is not part of carrying an installation across. A v2 from before it is still a perfectly good destination for every account, file and share, and refusing the whole migration to protect a settings screen would trade something that matters for something that does not. A table that *exists* with the wrong columns is still a blocker on the optional list too — that is a real disagreement about shape, not an absent feature.
+>
+> "Optional" has to reach two places a phase guard cannot: `Baseline::capture()` reads `max(id)` from every table in the contract *before* the first phase runs, and `:reset` deletes from every table in the delete order. Both skip a table the host has not got. The first was found by running against a real older host — the guard inside the phase was correct and never got the chance to fire, because the run died taking its baseline.
 
 ## The one thing the host had to change
 
@@ -124,7 +126,7 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Unit/HostTablesTest.php` | Delete order covers what is written, children first |
 | `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
 | `tests/Feature/FilesPhaseTest.php` | Download limits round-tripping, both scopes, and the two v1 states v2's enum cannot hold |
-| `tests/Feature/CaptchaSettingsPhaseTest.php` | All three providers, the secret encrypted the way the host reads it, the key source, incomplete pairs, and a host too old to have the table. **No fixture covers any of this** — ps-seed leaves the captcha options empty, so these tests are the only coverage |
+| `tests/Feature/CaptchaSettingsPhaseTest.php` | All three providers, the secret encrypted the way the host reads it, the key source, incomplete pairs, a host too old to have the table, and the baseline that has to skip it too. **No fixture covers any of this** — ps-seed leaves the captcha options empty, so these tests are the only coverage |
 
 ### Running it for real
 

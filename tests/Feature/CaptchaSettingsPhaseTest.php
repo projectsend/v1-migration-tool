@@ -192,3 +192,16 @@ it('skips cleanly when the host is older than the feature', function (): void {
     expect($context->run->fresh()->report['captcha_settings']['skipped_host_has_no_captcha'] ?? 0)->toBe(1)
         ->and(storedSetting('captcha_provider'))->toBeNull();
 });
+
+// Found by running against a real host that predated the feature: the
+// pre-run baseline reads max(id) from every table in the contract, so it
+// hit the missing one long before the phase's own guard could skip it.
+// The whole run died at the first write.
+it('takes a baseline without the optional table the host has not got', function (): void {
+    Schema::drop(HostTables::CAPTCHA_PROVIDERS);
+
+    $baseline = ProjectSend\V1Migration\Host\Baseline::capture();
+
+    expect($baseline)->not->toHaveKey(HostTables::CAPTCHA_PROVIDERS)
+        ->and($baseline)->toHaveKey(HostTables::USERS);
+});

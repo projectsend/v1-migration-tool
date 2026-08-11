@@ -84,7 +84,16 @@ final class ResetCommand extends Command
         $this->deleteFiles((array) $baseline);
 
         foreach (HostTables::deleteOrder() as $table) {
-            $from = (int) ($baseline[$table] ?? 0);
+            // A table with no baseline is one this host does not have — an
+            // optional feature it is older than, which the run skipped and
+            // therefore put nothing in. Deleting from it would raise "no
+            // such table" at the exact moment somebody is trying to put
+            // their installation back.
+            if (! array_key_exists($table, $baseline)) {
+                continue;
+            }
+
+            $from = (int) $baseline[$table];
             $deleted = DB::table($table)->where('id', '>', $from)->delete();
 
             if ($deleted > 0) {
