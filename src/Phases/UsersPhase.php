@@ -9,6 +9,7 @@ use ProjectSend\V1Migration\Host\HostTables;
 use ProjectSend\V1Migration\MigrationContext;
 use ProjectSend\V1Migration\Models\MigrationIdMap;
 use ProjectSend\V1Migration\Source\V1Tables;
+use ProjectSend\V1Migration\Transform\LegacyPassword;
 use ProjectSend\V1Migration\Transform\LegacyText;
 
 /**
@@ -34,7 +35,9 @@ use ProjectSend\V1Migration\Transform\LegacyText;
  * `$2y$08$…` string that Laravel's bcrypt driver verifies directly. No
  * reset email, no forced change: everyone's existing password keeps
  * working, which removes the single largest reason a migration gets
- * abandoned halfway.
+ * abandoned halfway. The exception — a blank password, or one left by a
+ * pre-bcrypt ProjectSend — is counted and neutralised rather than
+ * copied; see `LegacyPassword`.
  */
 final class UsersPhase extends TablePhase
 {
@@ -94,6 +97,17 @@ final class UsersPhase extends TablePhase
                 $context->count($this->key(), 'denied_imported_inactive');
             }
 
+            $password = (string) ($row['password'] ?? '');
+
+            // The account and everything it owns still belong here, so a
+            // password v2 cannot check is never a reason to skip a row —
+            // but it is a reason to count one. Preflight names these
+            // people beforehand; this is the same fact after the fact,
+            // for a run nobody watched.
+            if (! LegacyPassword::isVerifiable($password)) {
+                $context->count($this->key(), 'password_needs_reset');
+            }
+
             $id = (int) DB::table(HostTables::USERS)->insertGetId([
                 'type' => $isClient ? 'client' : 'staff',
                 'role_id' => $context->idMap->lookup(MigrationIdMap::ENTITY_ROLE, $v1RoleId ?: null),
@@ -101,7 +115,7 @@ final class UsersPhase extends TablePhase
                 'account_requested' => (int) ($row['account_requested'] ?? 0) === 1,
                 'name' => LegacyText::line((string) ($row['name'] ?? '')) ?: $email,
                 'email' => $email,
-                'password' => (string) ($row['password'] ?? ''),
+                'password' => LegacyPassword::forImport($password),
 
                 // v1's max_disk_quota is megabytes despite its bigint
                 // column — v1 multiplies by 1048576 at the point of use.

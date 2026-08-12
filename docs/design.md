@@ -108,6 +108,7 @@ Preflight blocks; the operator acknowledges; the run skips and lists.
 | Files on S3, GCS or Azure | v1 configures storage per file; v2 has one bucket |
 | Hidden assignments | v2 has no hidden state; creating them would show people files that were hidden from them |
 | Two-factor secrets | Encrypted with v1's key |
+| A password v2 cannot verify | **A note, not a blocker.** v1 hashes with bcrypt and the digest carries across untouched, so almost everyone keeps their password. A blank one, or one left by a pre-bcrypt ProjectSend, does not: v2 verifies the algorithm, so a legacy digest makes `Hash::check()` *throw* rather than return false — the symptom is a broken login page, not a refused password. Those rows get a bcrypt hash of 64 random characters instead, one each, which turns the 500 back into "these credentials do not match"; nothing usable is lost, because v1 authenticates with `password_verify()` and could not read those digests either. Named before the run and counted during it; those people use "forgot password" once |
 | Duplicate, blank or invalid emails | **A blocker, not a skip.** v1 signs in by username and lets accounts share an address; v2 signs in by email and cannot. Picking a winner is deciding which client loses access |
 
 Email templates and LDAP settings are deliberately not carried. v1's template bodies use a different placeholder vocabulary, so importing them verbatim produces emails with broken tokens — worse than v2's defaults.
@@ -116,7 +117,8 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 
 | File | Asserts |
 |---|---|
-| `tests/Feature/MigrationScreenTest.php` | **Start here.** A whole import through `RunMigrationJob`: accounts decoded, quotas in the right unit, passwords untouched, settings JSON-encoded as the host's cast reads them, the baseline recorded. Plus the duplicate-email blocker leaving nothing behind |
+| `tests/Feature/MigrationScreenTest.php` | **Start here.** A whole import through `RunMigrationJob`: accounts decoded, quotas in the right unit, passwords untouched, settings JSON-encoded as the host's cast reads them, the baseline recorded. Plus the duplicate-email blocker leaving nothing behind, and the note raised for passwords v2 cannot check |
+| `tests/Unit/LegacyPasswordTest.php` | Which v1 digests v2 can verify — all three bcrypt prefixes at any cost, neither a blank password nor another algorithm — and that the ones it cannot are each replaced with a distinct hash nobody holds |
 | `tests/Feature/HostSchemaCheckTest.php` | The host contract, in both directions: a missing table or column blocks; a column this tool never writes does not |
 | `tests/Feature/BundleSourceTest.php` | Keyset paging, resuming mid-table, duplicate option names, path traversal refused |
 | `tests/Feature/IdMapTest.php` | Preloaded and chunked lookups, skips recorded, two runs kept apart |
