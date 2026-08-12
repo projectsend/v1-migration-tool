@@ -241,6 +241,7 @@ function Report({ report, phaseLabels }: { report: Record<string, unknown>; phas
     // In the order the phases ran, so the report reads as an account of
     // what happened rather than as a dump of a JSON object's keys.
     const order = Object.keys(phaseLabels);
+    const needsReset = Number((report.users as Record<string, unknown> | undefined)?.password_needs_reset ?? 0);
     const phases = Object.entries(report)
         .filter(([key]) => key !== 'preflight' && key !== 'baseline')
         .sort(([a], [b]) => (order.indexOf(a) + 1 || 999) - (order.indexOf(b) + 1 || 999));
@@ -253,8 +254,20 @@ function Report({ report, phaseLabels }: { report: Record<string, unknown>; phas
             <CardContent className="flex flex-col gap-4">
                 <Alert>
                     <AlertTitle>{t('Tell your clients before they try to sign in')}</AlertTitle>
-                    <AlertDescription>
-                        {t('ProjectSend v1 signed in with a username. This one signs in with an email address. Passwords are unchanged.')}
+                    <AlertDescription className="flex flex-col gap-1">
+                        <span>{t('ProjectSend v1 signed in with a username. This one signs in with an email address. Passwords are unchanged.')}</span>
+
+                        {/* Almost always zero, and when it is not, this is the
+                            one place the operator sees the exception to the
+                            sentence above — the preflight note that named these
+                            accounts is scrolled well off the top by now. */}
+                        {needsReset > 0 && (
+                            <span>
+                                {t(':count accounts are the exception — this version cannot read the password they had. Those people sign in once through "Forgot password".', {
+                                    count: needsReset,
+                                })}
+                            </span>
+                        )}
                     </AlertDescription>
                 </Alert>
 

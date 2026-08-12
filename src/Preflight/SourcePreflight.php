@@ -7,6 +7,7 @@ namespace ProjectSend\V1Migration\Preflight;
 use ProjectSend\V1Migration\Source\MigrationSource;
 use ProjectSend\V1Migration\Source\V1FilePath;
 use ProjectSend\V1Migration\Source\V1Tables;
+use ProjectSend\V1Migration\Transform\LegacyPassword;
 use ProjectSend\V1Migration\Transform\OptionMap;
 
 /**
@@ -66,6 +67,7 @@ final class SourcePreflight
         $blank = [];
         $invalid = [];
         $twoFactor = 0;
+        $unusablePasswords = [];
         $afterId = 0;
 
         while (($rows = $source->rows(V1Tables::USERS, $afterId, self::CHUNK)) !== []) {
@@ -76,6 +78,10 @@ final class SourcePreflight
 
                 if ((int) ($row['totp_enabled'] ?? 0) === 1) {
                     $twoFactor++;
+                }
+
+                if (! LegacyPassword::isVerifiable((string) ($row['password'] ?? ''))) {
+                    $unusablePasswords[] = $username;
                 }
 
                 if ($email === '') {
@@ -141,6 +147,20 @@ final class SourcePreflight
                 'source.invalid_emails',
                 sprintf('%d v1 account(s) have an address that is not a valid email.', count($invalid)),
                 ['count' => count($invalid), 'sample' => array_slice($invalid, 0, self::SAMPLE_LIMIT)],
+            );
+        }
+
+        if ($unusablePasswords !== []) {
+            $findings[] = Finding::note(
+                'source.unusable_passwords',
+                sprintf(
+                    '%d v1 account(s) have a password v2 cannot check. v1 normally hashes with bcrypt, which carries across untouched, but a blank password or one left over from an older algorithm does not — those people will need to use "forgot password" once, after which their account behaves like any other. Everything else about the account still imports.',
+                    count($unusablePasswords),
+                ),
+                [
+                    'count' => count($unusablePasswords),
+                    'sample' => array_slice($unusablePasswords, 0, self::SAMPLE_LIMIT),
+                ],
             );
         }
 
