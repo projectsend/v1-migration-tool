@@ -28,6 +28,12 @@ abstract class TestCase extends Orchestra
 
     protected function defineEnvironment($app): void
     {
+        // Generated per run rather than committed. A working APP_KEY in a
+        // public repository is an invitation to paste it into a real
+        // installation, where a known key means forgeable signed cookies
+        // and decryptable encrypted columns. Tests only need *a* key.
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
+
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', [
             'driver' => 'sqlite',
