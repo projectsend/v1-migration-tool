@@ -119,8 +119,11 @@ cmd_up() {
         rm -rf "$SIM_DIR"
     fi
 
-    say "Cloning projectsend/cloud ($HOST_BRANCH)"
-    gh repo clone projectsend/cloud "$SIM_DIR" -- --branch "$HOST_BRANCH"
+    # projectsend/projectsend, not projectsend/cloud: the latter is the
+    # archived private repository the application was developed in before the
+    # cutover of 2026-08-13, and it takes no further commits.
+    say "Cloning projectsend/projectsend ($HOST_BRANCH)"
+    gh repo clone projectsend/projectsend "$SIM_DIR" -- --branch "$HOST_BRANCH"
 
     say "Cloning projectsend/v1-migration-tool ($PACKAGE_BRANCH)"
     mkdir -p "$SIM_DIR/packages"
