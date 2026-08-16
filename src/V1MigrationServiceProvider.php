@@ -49,6 +49,18 @@ class V1MigrationServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
+        // This package owns a whole screen, so it owns its translations
+        // too — lang/{locale}.json here, not in the host application.
+        // The host's translation scan reads its own directories and never
+        // looks inside packages/, so a string added here would otherwise
+        // never be reported as missing and would sit in English in every
+        // language, silently.
+        //
+        // The host's own lang/ is merged *after* this one by the
+        // framework's loader, so an installation can still override any
+        // of these without touching the package.
+        $this->loadJsonTranslationsFrom(__DIR__.'/../lang');
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 PreflightCommand::class,
