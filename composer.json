@@ -2,7 +2,7 @@
     "name": "projectsend/v1-migration-tool",
     "description": "Imports a ProjectSend v1 (r2098-era) install — database and files — into ProjectSend v2. Installed on demand, removed when the migration is done.",
     "type": "library",
-    "license": "MIT",
+    "license": "GPL-2.0-or-later",
     "require": {
         "php": "^8.4",
         "illuminate/support": "^12.0",
