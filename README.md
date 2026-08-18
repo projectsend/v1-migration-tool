@@ -14,19 +14,6 @@ php artisan migrate          # creates this package's two tables
 npm run build                # so its screen enters the frontend bundle
 ```
 
-This package is not on Packagist yet; v2 ships a `vcs` entry in its `composer.json` pointing
-here, which is how the command above resolves. If Composer answers `Could not find a matching
-version of package projectsend/v1-migration-tool`, the v2 install predates that entry — add it
-to the top-level `repositories` array and retry:
-
-```json
-"repositories": [
-    { "type": "vcs", "url": "https://github.com/projectsend/v1-migration-tool" }
-]
-```
-
-The repository is public, so no credentials are needed.
-
 Then open **`/system/migrate`** as a staff user with the *Edit settings* permission.
 There is no sidebar link on purpose — a one-time tool doesn't earn a permanent slot in
 the navigation.
