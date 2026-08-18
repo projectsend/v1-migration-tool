@@ -109,3 +109,15 @@ Tests run against a throwaway Testbench app with no host present, so the host ta
 replicated in `tests/Support/HostSchema.php`. That replica is a convenience, not the
 contract — the contract is `src/Host/HostTables.php`, and it is verified against the real
 database at preflight time.
+
+## License
+
+Free software under the **GNU General Public License v2, or (at your option) any later
+version** — see [LICENSE](LICENSE), the same terms as ProjectSend itself.
+
+Released as MIT up to and including v1.0.0; GPL from v1.0.1 onward. Anyone who took an
+earlier release under MIT keeps those terms for that release.
+
+Contributions require signing a CLA — [individual](CLA-INDIVIDUAL.md) or
+[entity](CLA-ENTITY.md) — for the reasons set out in ProjectSend's
+[CONTRIBUTING.md](https://github.com/projectsend/projectsend/blob/main/CONTRIBUTING.md).
