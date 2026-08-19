@@ -11,7 +11,6 @@ when you're done.
 ```bash
 composer require projectsend/v1-migration-tool
 php artisan migrate          # creates this package's two tables
-npm run build                # so its screen enters the frontend bundle
 ```
 
 Then open **`/system/migrate`** as a staff user with the *Edit settings* permission.

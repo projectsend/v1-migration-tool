@@ -30,8 +30,7 @@ use ProjectSend\V1Migration\Console\VerifyCommand;
  *   - a queue worker must be running: a real import outlives any web
  *     request, so the UI queues a job and polls a row
  *   - `php artisan migrate` after installing, to create this package's
- *     two tables, and `npm run build` so its Inertia page enters the
- *     frontend bundle
+ *     two tables
  *
  * What this package must never do, because all three are closed PHP
  * enums the host casts database columns to: add an Action case, add a
