@@ -8,17 +8,56 @@ it needs — arbitrary database connections plus direct writes across the whole 
 is not something every install should carry idle. Install it when you want it, remove it
 when you're done.
 
+## Installing
+
 ```bash
 composer require projectsend/v1-migration-tool
 php artisan migrate          # creates this package's two tables
-npm run build                # so its screen enters the frontend bundle
+```
+
+What comes next depends on how ProjectSend itself was installed.
+
+### From source, or with Docker
+
+```bash
+npm run build                # so this tool's screen enters the frontend bundle
 ```
 
 Then open **`/system/migrate`** as a staff user with the *Edit settings* permission.
 There is no sidebar link on purpose — a one-time tool doesn't earn a permanent slot in
 the navigation.
 
-When the migration is done:
+### From the release zip
+
+Migrate from the command line. There is no `/system/migrate` screen on a zip install:
+the zip ships its frontend already built, and without `package.json` there is no way to
+build this tool's page into it. Opening the page there answers *Unable to locate file in
+Vite manifest*.
+
+You lose nothing by staying in the terminal. The commands do the same work, and they
+don't need a queue worker — the import runs right there until it's finished.
+
+```bash
+php artisan projectsend:migrate:preflight --v1-path=/var/www/projectsend-v1
+php artisan projectsend:migrate:import    --v1-path=/var/www/projectsend-v1 --files=hardlink
+php artisan projectsend:migrate:verify
+```
+
+For a bundle, swap `--v1-path` for `--bundle=/path/to/bundle` — copy the bundle
+directory onto this server first, since there's no browser to upload it through.
+
+Preflight changes nothing, so run it as often as you like. It will tell you if anything
+has no v2 equivalent; `--accept-skips` on the import says you've read that list and want
+to go ahead anyway.
+
+`--files` decides what happens to the file bytes: `hardlink` when v1 and v2 share a
+filesystem, `copy` (the default) otherwise. `--help` on any of the commands lists the
+rest, including the `--db-*` overrides for when v1's config points somewhere the database
+no longer is.
+
+### When the migration is done
+
+Either way:
 
 ```bash
 php artisan projectsend:migrate:reset --drop   # optional; also drops this package's tables
@@ -34,8 +73,8 @@ composer remove projectsend/v1-migration-tool
 |---|---|
 | ProjectSend v2 with the schema this tool writes | Checked before anything runs — see `src/Host/HostTables.php` and `src/Preflight/HostSchemaCheck.php`. A mismatch is a hard stop, never a partial import |
 | A **fresh** install — set up, not yet used | There are no merge semantics. See `src/Preflight/FreshInstallCheck.php` |
-| The `staff` route middleware alias and an `edit_settings` Gate | The host's `IdentityServiceProvider` registers both |
-| A running queue worker | A real import outlives any web request; the UI queues a job and polls a row |
+| The `staff` route middleware alias and an `edit_settings` Gate | Only for the `/system/migrate` screen — the host's `IdentityServiceProvider` registers both. The commands answer to whoever has a shell |
+| A running queue worker | Also only for the screen: a real import outlives any web request, so the UI queues a job and polls a row. On the command line it simply runs |
 
 ## Two ways in
 
@@ -46,12 +85,13 @@ seconds.
 
 **Bundle** — v1 somewhere the v2 install cannot reach (a hosted ProjectSend, or simply a
 different server). Run `bin/projectsend-v1-export.php` on the v1 box; it produces a
-portable bundle you upload here. The exporter is a single dependency-free PHP file and
-**never writes to the v1 install**.
+portable bundle you upload here, or point the commands at. The exporter is a single
+dependency-free PHP file and **never writes to the v1 install**.
 
 Direct mode can be switched off entirely with `V1_MIGRATION_DIRECT_MODE=false` — letting
 an administrator type an arbitrary database host into a web form is fine on a box they
-own and unwanted on a hosted deployment.
+own and unwanted on a hosted deployment. It only closes the form; the commands are
+unaffected, because anyone running them is already on the machine.
 
 ## What it will not do
 

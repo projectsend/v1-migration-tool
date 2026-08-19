@@ -23,15 +23,19 @@ use ProjectSend\V1Migration\Console\VerifyCommand;
  * follows.
  *
  * Host integration contract (see README.md):
- *   - the `staff` route middleware alias must be registered, and an
- *     `edit_settings` Gate must be defined (the host's
- *     IdentityServiceProvider does this generically for every Permission
- *     case)
- *   - a queue worker must be running: a real import outlives any web
- *     request, so the UI queues a job and polls a row
  *   - `php artisan migrate` after installing, to create this package's
- *     two tables, and `npm run build` so its Inertia page enters the
- *     frontend bundle
+ *     two tables
+ *   - for the /system/migrate screen only: the `staff` route middleware
+ *     alias must be registered and an `edit_settings` Gate defined (the
+ *     host's IdentityServiceProvider does this generically for every
+ *     Permission case), and a queue worker must be running, because a
+ *     real import outlives any web request — the UI queues a job and
+ *     polls a row
+ *
+ * The screen is not always available: a release zip ships its frontend
+ * already built and no package.json, so this package's page can never
+ * enter that bundle. There the console commands are the whole tool, and
+ * they need neither the Gate nor a worker — the import runs inline.
  *
  * What this package must never do, because all three are closed PHP
  * enums the host casts database columns to: add an Action case, add a
