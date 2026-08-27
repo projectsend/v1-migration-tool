@@ -17,12 +17,30 @@ use Illuminate\Support\Str;
  * whole design: no reset email, no forced change, people keep the
  * password they already had.
  *
- * This class exists for the rows where that does not hold. The plaintext
- * is gone, so nobody can repair them; what it can do is make sure they
- * fail the way an unknown password is supposed to fail.
+ * This class exists for the rows where that does not hold: the ones
+ * carrying a bcrypt digest under a different label, and the ones not
+ * carrying bcrypt at all.
  */
 class LegacyPassword
 {
+    /**
+     * Bcrypt labels that differ from `$2y$` in the label and nothing else.
+     *
+     * All three name the same algorithm. `$2a$` is what crypt_blowfish
+     * emitted before 2011; `$2y$` was added to mark digests from the fixed
+     * implementation, and `$2b$` is OpenBSD's name for the same fix. A
+     * digest under any of them verifies identically once relabelled —
+     * checked here against ASCII, accented, high-bit and multi-byte
+     * passwords, and against a 60-character one.
+     *
+     * `$2x$` is deliberately not in this list. It is not a spelling of
+     * `$2y$`: it asks for the *old, broken* handling of bytes above 127 to
+     * be reproduced on purpose, so relabelling it silently locks out
+     * anybody whose password is not plain ASCII. It goes down the
+     * unverifiable path below instead.
+     */
+    private const RELABELLED = ['$2a$', '$2b$'];
+
     /**
      * Whether v2 will be able to check this digest at a login prompt.
      *
@@ -42,42 +60,63 @@ class LegacyPassword
      * nothing is being taken away here — the digest was already dead, and
      * carrying it verbatim only decides which way its corpse fails.
      *
-     * All three bcrypt prefixes pass. The cost embedded in them is not
-     * checked, because v2 re-hashes a stale one on the first successful
-     * login.
+     * The relabelled prefixes count as verifiable because `forImport()`
+     * relabels them. The cost embedded in a digest is not checked, because
+     * v2 re-hashes a stale one on the first successful login.
      */
     public static function isVerifiable(string $hash): bool
     {
         return str_starts_with($hash, '$2y$')
-            || str_starts_with($hash, '$2a$')
-            || str_starts_with($hash, '$2b$');
+            || self::relabel($hash) !== null;
     }
 
     /**
      * The digest to write into `users.password`.
      *
-     * A verifiable one goes in as it is — that is the case this whole
-     * migration is built around. Anything else is replaced with a bcrypt
-     * hash of 64 random characters: a valid digest that nobody holds and
-     * nobody can hold, one per account so two broken rows never share a
-     * secret.
+     * A `$2y$` digest goes in as it is — that is the case this whole
+     * migration is built around.
      *
-     * The replacement is what turns a *broken* login into a *refused*
-     * one. Left verbatim, a pre-bcrypt digest makes `Hash::check()` throw
-     * on the sign-in form, and v2 renders that as a 500 — an error page,
-     * on the first thing a migrated client touches, blamed on the new
-     * install rather than on a password that stopped working years ago.
-     * Replaced, the same person gets "these credentials do not match",
-     * and "forgot password" puts them back in. Which is exactly what
-     * preflight told the operator would happen.
+     * A `$2a$` or `$2b$` one goes in relabelled. This matters more than it
+     * sounds: v2's hasher decides whether it recognises an algorithm with
+     * `password_get_info()`, which answers "unknown" for both of those
+     * labels even though `password_verify()` accepts them perfectly well.
+     * So a digest carried across verbatim does not fail to match — it
+     * makes the sign-in form throw, and v2 renders that as a 500. Only the
+     * four label bytes change; everything after them, salt and digest
+     * alike, is untouched, so the password itself is exactly as it was.
+     *
+     * Anything else is replaced with a bcrypt hash of 64 random
+     * characters: a valid digest that nobody holds and nobody can hold,
+     * one per account so two broken rows never share a secret. That is
+     * what turns a *broken* login into a *refused* one — the person gets
+     * "these credentials do not match", and "forgot password" puts them
+     * back in. Which is exactly what preflight told the operator would
+     * happen.
      *
      * Nothing recoverable is discarded: `isVerifiable()` explains why a
      * digest this rejects was already unusable in v1.
      */
     public static function forImport(string $hash): string
     {
-        return self::isVerifiable($hash)
-            ? $hash
-            : Hash::make(Str::random(64));
+        if (str_starts_with($hash, '$2y$')) {
+            return $hash;
+        }
+
+        return self::relabel($hash) ?? Hash::make(Str::random(64));
+    }
+
+    /**
+     * The same digest under the one label v2's hasher will look at, or
+     * null if this is not one of the labels that can simply be renamed.
+     */
+    private static function relabel(string $hash): ?string
+    {
+        foreach (self::RELABELLED as $prefix) {
+            if (str_starts_with($hash, $prefix)) {
+                return '$2y$'.substr($hash, 4);
+            }
+        }
+
+        return null;
     }
 }

@@ -74,3 +74,49 @@ it('gives each account its own replacement', function (): void {
     // account the moment it leaked from any of them.
     expect(LegacyPassword::forImport(''))->not->toBe(LegacyPassword::forImport(''));
 });
+
+it('relabels the other bcrypt prefixes so v2 will look at them', function (): void {
+    // The bug behind projectsend/projectsend#1706. password_verify()
+    // reads $2a$ and $2b$ happily, but v2's hasher first asks
+    // password_get_info(), which answers "unknown" for both — so a digest
+    // carried across verbatim makes the sign-in form throw a
+    // RuntimeException, which renders as a 500.
+    $password = 'the password they already had';
+    $digest = password_hash($password, PASSWORD_BCRYPT, ['cost' => 8]);
+
+    foreach (['$2a$', '$2b$'] as $prefix) {
+        $legacy = $prefix.substr($digest, 4);
+        $imported = LegacyPassword::forImport($legacy);
+
+        expect($imported)->toStartWith('$2y$')
+            // Only the label changed. Salt and digest are the same bytes.
+            ->and(substr($imported, 4))->toBe(substr($legacy, 4))
+            ->and(password_get_info($imported)['algoName'])->toBe('bcrypt')
+            ->and(Hash::check($password, $imported))->toBeTrue();
+    }
+});
+
+it('relabels without breaking a password that is not plain ASCII', function (): void {
+    // The reason $2x$ is excluded below: bytes above 127 are exactly
+    // where the 2011 crypt_blowfish bug lived, so they are what a wrong
+    // relabelling would silently lock out.
+    foreach (['contraseña', 'café-Ñ', '🔒 emoji', str_repeat('a', 60)] as $password) {
+        $digest = password_hash($password, PASSWORD_BCRYPT, ['cost' => 8]);
+        $imported = LegacyPassword::forImport('$2a$'.substr($digest, 4));
+
+        expect(Hash::check($password, $imported))->toBeTrue();
+    }
+});
+
+it('refuses to relabel a $2x$ digest', function (): void {
+    // $2x$ is not a spelling of $2y$: it asks for the old, broken
+    // handling of high-bit bytes to be reproduced on purpose. Renaming it
+    // would lock out anybody whose password is not plain ASCII, so it
+    // takes the replacement path like any other digest v2 cannot read.
+    $password = 'contraseña';
+    $legacy = '$2x$'.substr(password_hash($password, PASSWORD_BCRYPT, ['cost' => 8]), 4);
+
+    expect(LegacyPassword::isVerifiable($legacy))->toBeFalse()
+        ->and(LegacyPassword::forImport($legacy))->not->toBe($legacy)
+        ->and(Hash::check($password, LegacyPassword::forImport($legacy)))->toBeFalse();
+});
