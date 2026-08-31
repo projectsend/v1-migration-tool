@@ -38,11 +38,11 @@ use ProjectSend\V1Migration\Transform\LegacyText;
  */
 final class ActivityLogPhase extends TablePhase
 {
-    private ActorTypes $actors;
+    private ActorSnapshots $actors;
 
     public function __construct()
     {
-        $this->actors = new ActorTypes;
+        $this->actors = new ActorSnapshots;
     }
 
     public function key(): string
@@ -109,7 +109,7 @@ final class ActivityLogPhase extends TablePhase
             $insert[] = [
                 'actor_id' => $actorId,
                 'actor_name' => LegacyText::line($row['owner_user'] ?? null),
-                'actor_type' => $this->actors->for($actorId),
+                'actor_type' => $this->actors->typeFor($actorId),
                 'origin' => ActionMap::origin($code),
                 'ip_address' => null,
                 'action' => $action,

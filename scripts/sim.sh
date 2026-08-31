@@ -77,8 +77,13 @@ FIXTURE_ROOT="${V1_FIXTURE_ROOT:-$(cd "$ROOT/.." && pwd)}"
 
 # Until both are merged, the instance is built from the branches the
 # work is on — the same reason refresh-sim.sh takes --branch.
-HOST_BRANCH="${SIM_HOST_BRANCH:-feature/installable-package-pages}"
-PACKAGE_BRANCH="${SIM_PACKAGE_BRANCH:-feature/migration-engine}"
+# Both default to main. They used to name the feature branches this tool
+# was built on, which merged and were deleted — leaving `sim.sh up` dead
+# on a "Remote branch not found" from `gh repo clone`, months before
+# anybody ran it again. Pin a branch through the environment when a run
+# genuinely needs one.
+HOST_BRANCH="${SIM_HOST_BRANCH:-main}"
+PACKAGE_BRANCH="${SIM_PACKAGE_BRANCH:-main}"
 
 ADMIN_EMAIL="admin@example.com"
 ADMIN_PASSWORD="sim-admin-password"

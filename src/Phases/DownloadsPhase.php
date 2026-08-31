@@ -19,6 +19,30 @@ use ProjectSend\V1Migration\Source\V1Tables;
  * file in the imported install shows zero downloads forever, which reads
  * as data loss to the person looking at it.
  *
+ * ### This is the only source of download history
+ *
+ * v1 records one download **twice**: `record_new_download()` writes a
+ * `tbl_downloads` row, and the same request then logs actions_log code
+ * 7/8 (or 37 when anonymous). Importing both put two v2 rows on the wire
+ * for one real download and doubled every download count in the product.
+ * So ActionMap drops 7/8/37 and this phase owns them outright — see the
+ * reasoning there.
+ *
+ * `tbl_downloads` wins that choice because it is the ledger v1's own
+ * numbers come from (`manage-files.php`'s `download_count`, the limit
+ * checks in `functions.php`), so reading it alone reproduces exactly
+ * what the customer saw in v1. It also carries the IP and the anonymous
+ * flag, which the log row does not.
+ *
+ * What it does *not* carry is the two name snapshots, and those are not
+ * cosmetic: v2 renders a null `actor_name` as "(deleted account)" for an
+ * account that still exists, and the downloads screen filters on
+ * `subject_name` and `actor_name` rather than joining, so rows without
+ * them are invisible to both search boxes. v1 has no names in this
+ * table, so they are read from the rows this migration has already
+ * written — which is also what v2 itself would snapshot for a download
+ * happening now.
+ *
  * It is also the largest table in most installs after the activity log
  * itself — a hundred thousand rows in the mid-size fixture, millions on
  * a busy install — so nothing here is per-row. One `whereIn` resolves a
@@ -30,11 +54,11 @@ use ProjectSend\V1Migration\Source\V1Tables;
  */
 final class DownloadsPhase extends TablePhase
 {
-    private ActorTypes $actors;
+    private ActorSnapshots $actors;
 
     public function __construct()
     {
-        $this->actors = new ActorTypes;
+        $this->actors = new ActorSnapshots;
     }
 
     public function key(): string
@@ -77,6 +101,8 @@ final class DownloadsPhase extends TablePhase
             array_map(static fn (array $row): int => (int) $row['file_id'], $rows),
         );
 
+        $fileNames = $this->fileNames($fileIds);
+
         $actorIds = [];
         foreach ($rows as $row) {
             $actorIds[] = $context->idMap->lookup(MigrationIdMap::ENTITY_USER, (int) ($row['user_id'] ?? 0));
@@ -99,14 +125,14 @@ final class DownloadsPhase extends TablePhase
 
             $insert[] = [
                 'actor_id' => $actorId,
-                'actor_name' => null,
-                'actor_type' => $this->actors->for($actorId),
+                'actor_name' => $this->actors->nameFor($actorId),
+                'actor_type' => $this->actors->typeFor($actorId),
                 'origin' => $anonymous ? 'public' : 'ui',
                 'ip_address' => $this->ip($row['remote_ip'] ?? null),
                 'action' => $anonymous ? 'public_file.downloaded' : 'file.downloaded',
                 'subject_type' => HostTables::MORPH_FILE,
                 'subject_id' => $fileId,
-                'subject_name' => null,
+                'subject_name' => $fileNames[$fileId] ?? null,
                 'context' => null,
                 'created_at' => $context->clock->toUtc($row['timestamp'] ?? null) ?? now(),
             ];
@@ -117,6 +143,33 @@ final class DownloadsPhase extends TablePhase
         }
 
         $context->count($this->key(), 'imported', count($insert));
+    }
+
+    /**
+     * v2 file id => name, for the ids in this chunk only.
+     *
+     * Deliberately not a cache that grows across chunks the way
+     * ActorSnapshots is. Accounts are few and busy, so caching them
+     * converges; files are many and a download history walks most of
+     * them, so the same cache would end up holding a string per file in
+     * the install with nothing ever evicting it.
+     *
+     * @param  array<int, int>  $fileIds  v1 id => v2 id
+     * @return array<int, string>  v2 id => name
+     */
+    private function fileNames(array $fileIds): array
+    {
+        $ids = array_values(array_unique(array_filter($fileIds)));
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return DB::table(HostTables::FILES)
+            ->whereIn('id', $ids)
+            ->pluck('name', 'id')
+            ->map(static fn (mixed $name): string => (string) $name)
+            ->all();
     }
 
     /**

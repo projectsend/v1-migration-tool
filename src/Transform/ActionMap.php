@@ -30,9 +30,27 @@ namespace ProjectSend\V1Migration\Transform;
  *   that look similar are about a file's *public* flag, which is a
  *   different thing entirely. Mapping them would put confident, wrong
  *   history in front of an administrator.
- * - **7/8 both become `file.downloaded`.** v1 split the code by whether
- *   the downloader was staff or a client; v2 records that as the actor's
- *   type on the row itself, so the distinction survives.
+ * - **7/8/37 (downloads) are dropped, because v1 records a download
+ *   twice.** `Download.php` calls `record_new_download()` — a
+ *   `tbl_downloads` row — and then the same request logs 7 or 8;
+ *   `download.php` does the same pair with 37. Carrying both across
+ *   wrote two v2 rows for one real download and doubled every download
+ *   count in the product, since v2 reads all three actions. DownloadsPhase
+ *   owns them now.
+ *
+ *   `tbl_downloads` is the right survivor rather than an arbitrary one:
+ *   it is the ledger v1's *own* numbers come from (`manage-files.php`'s
+ *   `download_count`, the limit checks in `functions.php`), so reading
+ *   it alone reproduces what the customer saw in v1, and it carries the
+ *   IP and anonymous flag the log row does not.
+ *
+ *   One thing genuinely goes with them. When v1's
+ *   `download_logging_ignore_file_author` is on, an author downloading
+ *   their own file writes the log row but *not* the `tbl_downloads` row,
+ *   so those downloads are no longer imported. That is the same
+ *   arithmetic v1 did — the option exists precisely to keep them out of
+ *   v1's counts — so the number stays right and an audit line is lost.
+ *   The option is off by default.
  * - **13/14 and 16/17 and 19/20 vs 27/28** collapse the same way: v1
  *   used separate codes for users and clients, v2 has one account model.
  * - **38/39 (a request "was processed")** are dropped as ambiguous —
@@ -71,9 +89,6 @@ final class ActionMap
 
         5 => 'file.uploaded',
         6 => 'file.uploaded',
-        7 => 'file.downloaded',
-        8 => 'file.downloaded',
-        37 => 'public_file.downloaded',
         41 => 'file.previewed',
         12 => 'file.deleted',
         32 => 'file.updated',
@@ -102,11 +117,20 @@ final class ActionMap
      * @var array<int, string>
      */
     private const DROPPED = [
+        // Not "no v2 equivalent" — the opposite. These are counted by the
+        // downloads phase, from v1's downloads table, and importing them
+        // here as well is what doubled every download count. Spelled out
+        // in the report so the next person to read this map sees three
+        // download codes missing *with a reason* rather than a gap that
+        // looks like an oversight to be filled back in.
+        7 => 'file downloaded — counted by the downloads phase, from v1\'s downloads table',
+        8 => 'file downloaded — counted by the downloads phase, from v1\'s downloads table',
         9 => 'zip file generated — v2 records zip downloads, not their generation',
         21 => 'file marked hidden — per-assignment visibility, which v2 does not have',
         22 => 'file marked visible — per-assignment visibility, which v2 does not have',
         29 => 'branding logo changed — branding is a separate module in v2',
         30 => 'ProjectSend updated',
+        37 => 'public file downloaded — counted by the downloads phase, from v1\'s downloads table',
         38 => 'account request processed — does not record the outcome',
         39 => 'membership requests processed — does not record the outcome',
         40 => 'file hidden for everyone — per-assignment visibility, which v2 does not have',
@@ -133,14 +157,20 @@ final class ActionMap
     /**
      * v1 code => the ActivityOrigin v2 should record.
      *
-     * Only one code is not `ui`: an anonymous download of a public file
-     * did not come from a signed-in session, and v2 has a vocabulary for
-     * that. Getting this right matters because the download screens
-     * filter on it.
+     * Every code this map still carries is recorded as `ui`. The one that
+     * was not — 37, an anonymous download of a public file — is no longer
+     * mapped here at all, because DownloadsPhase owns downloads and sets
+     * that origin itself from the `anonymous` column, which is a better
+     * source than the code was.
+     *
+     * Kept as a named function rather than folded into a literal at the
+     * call site: "which origin does this code imply" is a real question
+     * about v1 that a future code will ask again, and answering it inline
+     * is how it would get answered wrongly.
      */
     public static function origin(int $code): string
     {
-        return $code === 37 ? 'public' : 'ui';
+        return 'ui';
     }
 
     /**
@@ -154,8 +184,6 @@ final class ActionMap
     {
         return in_array(self::for($code), [
             'file.uploaded',
-            'file.downloaded',
-            'public_file.downloaded',
             'file.previewed',
             'file.deleted',
             'file.updated',
