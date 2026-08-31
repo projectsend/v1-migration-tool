@@ -9,6 +9,7 @@ use Illuminate\Support\ServiceProvider;
 use ProjectSend\V1Migration\Models\MigrationRun;
 use ProjectSend\V1Migration\Console\ImportCommand;
 use ProjectSend\V1Migration\Console\PreflightCommand;
+use ProjectSend\V1Migration\Console\RepairDownloadsCommand;
 use ProjectSend\V1Migration\Console\ResetCommand;
 use ProjectSend\V1Migration\Console\VerifyCommand;
 
@@ -71,6 +72,7 @@ class V1MigrationServiceProvider extends ServiceProvider
                 ImportCommand::class,
                 VerifyCommand::class,
                 ResetCommand::class,
+                RepairDownloadsCommand::class,
             ]);
         }
 

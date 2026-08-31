@@ -92,6 +92,16 @@ Two consequences worth stating plainly. `DownloadsPhase` had been writing `actor
 
 Two v1 states have no v2 equivalent and are counted in the report rather than forced through. A limit enabled with a count of `0` (v1's column default, so this reads as switched on and never configured) is dropped — writing it through would produce a file nobody can ever download. And `download_limit_type` is an unconstrained `varchar(20)`, so anything that is not `total` or `per_user` falls back to `total` rather than failing a run of 200,000 rows over one bad string.
 
+### Repairing an install migrated before that fix
+
+`projectsend:migrate:repair-downloads` removes the duplicates an older run left. It **reports by default and deletes only with `--repair`**, because it removes rows from an audit log and that is the last table in the application to be casual about.
+
+The safety is not the flag, though. It is that **every deletion is pair-verified**. The tempting predicate is "a migrated download row carrying a `subject_name`", since the old `DownloadsPhase` left that null and `ActivityLogPhase` filled it — and it is a trap, because the same fix that stopped the duplication also made `DownloadsPhase` populate `subject_name`. On an install migrated by a current release that predicate matches every download row there is, and the "repair" deletes the whole history. So no row is removed on the strength of its own shape: it goes only when its surviving counterpart is demonstrably present — same file, same instant, same action, carrying the null `subject_name` that only the old ledger import wrote. That makes the command *inert* on an install that was never affected rather than merely unlikely to fire.
+
+It also disposes of the one case that would be real loss. `DownloadsPhase` skips a download whose file was not imported, so for those the actions_log row is the only record; having no partner, they are kept. Two further bounds — above the run's recorded activity-log baseline, and `created_at` earlier than the run started — exclude what was there beforehand and everything v2 has recorded since, so a download happening today can never be mistaken for imported history however closely its columns match.
+
+Reinstall the package to run it if it was already removed: the run records and the baseline live in the host database and outlive the uninstall.
+
 **CAPTCHA keys are carried for every provider, and switched on for at most one.** v1 kept a site/secret pair for each of the three services it supported and one option naming the active one; v2 keeps the pairs in a table and names the active one in a setting, so the shapes differ but the vocabulary nearly matches. All three pairs come across, not just the active one — v1 let an administrator try Turnstile, switch to reCAPTCHA and switch back without re-keying, and v2 keeps keys per provider for the same reason.
 
 A provider whose pair is incomplete does not become the active one. v2 already treats half-configured as switched off, so writing it through would produce an installation whose settings screen names a service while nothing is actually being checked; the keys are still carried and the report says what is missing, so it is a form to finish rather than a gap to discover.
@@ -137,6 +147,7 @@ Email templates and LDAP settings are deliberately not carried. v1's template bo
 | `tests/Feature/CategoriesPhaseTest.php` | The tree flattening: full-path naming, order-independence, over-long paths, identical sibling names, cycles, dangling parents |
 | `tests/Feature/FilesPhaseTest.php` | Download limits round-tripping, both scopes, and the two v1 states v2's enum cannot hold |
 | `tests/Feature/DownloadHistoryTest.php` | That one v1 download becomes one v2 row and not two, that the surviving row is the one carrying the IP and the anonymous flag, and that it snapshots the names the downloads screen renders and filters on |
+| `tests/Feature/RepairDownloadsCommandTest.php` | Mostly what the repair must *not* delete: an install migrated after the fix, a log row with no ledger counterpart, a download v2 recorded afterwards, and anything below the baseline |
 | `tests/Feature/CaptchaSettingsPhaseTest.php` | All three providers, the secret encrypted the way the host reads it, the key source, incomplete pairs, a host too old to have the table, and the baseline that has to skip it too. **No fixture covers any of this** — ps-seed leaves the captcha options empty, so these tests are the only coverage |
 
 ### Running it for real
