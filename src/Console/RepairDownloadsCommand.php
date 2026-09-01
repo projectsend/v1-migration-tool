@@ -109,13 +109,15 @@ final class RepairDownloadsCommand extends Command
 
         $duplicates = $this->duplicates((int) $baseline, $run)->count();
         $surviving = $this->imported((int) $baseline, $run)->count() - $duplicates;
+        $nameless = $this->nameless((int) $baseline, $run)->count();
 
         $this->line("Run {$run->id}, imported {$run->started_at->toDateString()}");
         $this->line('  Migrated download rows:   '.number_format($surviving + $duplicates));
         $this->line('  Duplicates to remove:     '.number_format($duplicates));
         $this->line('  Surviving after repair:   '.number_format($surviving));
+        $this->line('  Missing a name to show:   '.number_format($nameless));
 
-        if ($duplicates === 0) {
+        if ($duplicates === 0 && $nameless === 0) {
             $this->info('Nothing to repair — this install has one row per download already.');
 
             return self::SUCCESS;
@@ -125,7 +127,7 @@ final class RepairDownloadsCommand extends Command
         // v1 held. Removing everything would mean the pair check matched
         // rows that are each other's only copy, which cannot happen by
         // construction — so if it somehow does, stop rather than proceed.
-        if ($surviving <= 0) {
+        if ($duplicates > 0 && $surviving <= 0) {
             $this->error('Refusing: that would remove every migrated download row, which is not what a duplicate is.');
 
             return self::FAILURE;
@@ -142,9 +144,10 @@ final class RepairDownloadsCommand extends Command
             return self::FAILURE;
         }
 
-        $removed = $this->remove((int) $baseline, $run, $duplicates);
+        $removed = $duplicates > 0 ? $this->remove((int) $baseline, $run, $duplicates) : 0;
+        $named = $this->restoreNames((int) $baseline, $run);
 
-        $this->info("Removed {$removed} duplicate download row(s).");
+        $this->info("Removed {$removed} duplicate download row(s), and restored the name on {$named}.");
 
         return self::SUCCESS;
     }
@@ -206,6 +209,70 @@ final class RepairDownloadsCommand extends Command
         }
 
         return $removed;
+    }
+
+    /**
+     * Surviving rows with no name to show.
+     *
+     * The old DownloadsPhase wrote `subject_name` and `actor_name` as
+     * null, which was survivable only while the duplicate beside it
+     * carried them. Removing the duplicate makes that permanent, and it
+     * is not cosmetic: v2 renders a null `actor_name` as "(deleted
+     * account)" beside an account that is sitting right there, and the
+     * downloads screen's file and user filters match on those two columns
+     * rather than joining, so a row carrying neither is invisible to both.
+     *
+     * Repairing the count is therefore only half of it. Found by running
+     * this against a real migrated fixture rather than by reading it.
+     */
+    private function nameless(int $baseline, MigrationRun $run): Builder
+    {
+        return $this->imported($baseline, $run)
+            ->whereNull('subject_name')
+            ->whereNotNull('subject_id')
+            // Only where a name can actually be recovered. A download of a
+            // file deleted since has nothing to restore from, and counting
+            // it would leave the command reporting work it can never
+            // finish — "there is something to repair here" forever, on an
+            // install where there is not.
+            ->whereExists(fn (Builder $query) => $query->select(DB::raw(1))
+                ->from(HostTables::FILES)
+                ->whereColumn(HostTables::FILES.'.id', HostTables::ACTIVITY_LOG.'.subject_id'));
+    }
+
+    /**
+     * Fill those names in from the rows this migration already wrote.
+     *
+     * The same source the current DownloadsPhase uses, deliberately: the
+     * accounts and files tables, not v1's snapshot. It is what v2 records
+     * for a download happening now, so a repaired install reads the same
+     * as one migrated by a current release rather than subtly differently.
+     *
+     * Correlated subqueries because this has to run on MySQL and on the
+     * SQLite the tests use, and neither `UPDATE ... JOIN` nor a
+     * self-referencing subquery works on both. These reference other
+     * tables, which is allowed everywhere.
+     */
+    private function restoreNames(int $baseline, MigrationRun $run): int
+    {
+        $log = HostTables::ACTIVITY_LOG;
+        $files = HostTables::FILES;
+        $users = HostTables::USERS;
+
+        $named = $this->nameless($baseline, $run)->update([
+            'subject_name' => DB::raw("(select name from {$files} where {$files}.id = {$log}.subject_id)"),
+        ]);
+
+        // Separately, and over a different set: an anonymous download has
+        // no actor and never had a name, so these are not the same rows.
+        $this->imported($baseline, $run)
+            ->whereNull('actor_name')
+            ->whereNotNull('actor_id')
+            ->update([
+                'actor_name' => DB::raw("(select name from {$users} where {$users}.id = {$log}.actor_id)"),
+            ]);
+
+        return $named;
     }
 
     private function resolveRun(): ?MigrationRun

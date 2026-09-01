@@ -156,6 +156,55 @@ it('reports and changes nothing unless it is asked to repair', function (): void
     expect(downloadRowCount())->toBe(2);
 });
 
+it('restores the name the removed duplicate was carrying', function (): void {
+    // Repairing the count is only half of it. The old DownloadsPhase left
+    // subject_name and actor_name null, which was survivable only while
+    // the duplicate beside it carried them; deleting that duplicate makes
+    // it permanent, and v2 then prints "(deleted account)" beside an
+    // account that exists and hides the row from both download filters.
+    $run = migrationRun();
+
+    $fileId = DB::table(HostTables::FILES)->insertGetId([
+        'name' => 'Quarterly report', 'original_name' => 'q.pdf', 'path' => '2026/02/q.pdf', 'slug' => 'quarterly-report',
+        'mime_type' => 'application/pdf', 'size' => 10, 'checksum' => str_repeat('a', 64),
+        'disk' => 'files', 'created_at' => '2026-02-01 10:00:00', 'updated_at' => '2026-02-01 10:00:00',
+    ]);
+    $userId = DB::table(HostTables::USERS)->insertGetId([
+        'type' => 'client', 'name' => 'Acme Ltd', 'email' => 'acme@example.test',
+        'password' => 'x', 'active' => true,
+        'created_at' => '2026-02-01 00:00:00', 'updated_at' => '2026-02-01 00:00:00',
+    ]);
+
+    activityRow(['subject_id' => $fileId, 'actor_id' => $userId, 'ip_address' => '198.51.100.4']);
+    activityRow(['subject_id' => $fileId, 'actor_id' => $userId, 'subject_name' => 'Quarterly report', 'actor_name' => 'acme']);
+
+    $this->artisan('projectsend:migrate:repair-downloads', ['--run' => (string) $run->id, '--repair' => true, '--force' => true])
+        ->assertSuccessful();
+
+    $row = DB::table(HostTables::ACTIVITY_LOG)->first();
+
+    // Read from the migrated rows rather than from v1's snapshot, which is
+    // what the current DownloadsPhase does — so a repaired install reads
+    // the same as one migrated by a current release. v1's owner_user was a
+    // username ("acme"); v2 shows display names everywhere else.
+    expect($row->ip_address)->toBe('198.51.100.4')
+        ->and($row->subject_name)->toBe('Quarterly report')
+        ->and($row->actor_name)->toBe('Acme Ltd');
+});
+
+it('does not keep reporting a name it has no way to recover', function (): void {
+    // The file was deleted since, so there is nothing to restore from.
+    // Counting it would leave the command reporting work it can never
+    // finish, on an install where there is nothing wrong.
+    $run = migrationRun();
+
+    activityRow(['subject_id' => 4242, 'ip_address' => '198.51.100.4']);
+
+    $this->artisan('projectsend:migrate:repair-downloads', ['--run' => (string) $run->id])
+        ->expectsOutputToContain('Nothing to repair')
+        ->assertSuccessful();
+});
+
 it('is safe to run twice', function (): void {
     $run = migrationRun();
 
