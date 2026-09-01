@@ -80,7 +80,17 @@ final class FileTransfer
      */
     public function targetPath(string $sourcePath, ?string $uploadedAt): string
     {
-        $extension = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION));
+        // Narrowed to alphanumerics, because this one comes from a v1
+        // database rather than from here. v2 writes the path into a
+        // response header -- X-Accel-Redirect or X-Sendfile, depending on
+        // the web server -- and a CR or LF in a header value is header
+        // injection; the host refuses such a path outright, so a file
+        // imported with one would download as a 404 forever.
+        //
+        // Nothing user-visible is lost by being strict: this is the
+        // storage path, and the name the recipient sees is `original_name`,
+        // which is carried across untouched.
+        $extension = preg_replace('/[^a-z0-9]/', '', strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION))) ?? '';
         $timestamp = $uploadedAt !== null ? strtotime($uploadedAt) : false;
         $prefix = date('Y/m', $timestamp === false ? time() : $timestamp);
 
