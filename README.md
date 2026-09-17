@@ -11,9 +11,13 @@ when you're done.
 ## Installing
 
 ```bash
-composer require projectsend/v1-migration-tool
+composer require projectsend/v1-migration-tool --update-no-dev
 php artisan migrate          # creates this package's two tables
 ```
+
+`--update-no-dev` stops Composer installing ProjectSend's development and test tools alongside it,
+which a production install does not have and does not need. Leave it off on a checkout you develop
+on.
 
 What comes next depends on how ProjectSend itself was installed.
 
@@ -61,7 +65,7 @@ Either way:
 
 ```bash
 php artisan projectsend:migrate:reset --drop   # optional; also drops this package's tables
-composer remove projectsend/v1-migration-tool
+composer remove projectsend/v1-migration-tool --update-no-dev
 ```
 
 `--drop` throws away the v1 → v2 id map. Keep it if you may ever want to redirect old
